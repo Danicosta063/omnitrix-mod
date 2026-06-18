@@ -1,0 +1,24 @@
+{
+  "category.omnitrix": "Omnitrix",
+  "key.omnitrix.selector": "Abrir Seletor / Ciclar Alien",
+  "key.omnitrix.transform": "Transformar",
+
+  "itemGroup.omnitrix": "Omnitrix",
+
+  "omnitrix.alien.heatblast": "Heatblast",
+  "omnitrix.alien.wildmutt": "Wildmutt",
+  "omnitrix.alien.diamondhead": "Diamondhead",
+  "omnitrix.alien.xlr8": "XLR8",
+  "omnitrix.alien.grey_matter": "Grey Matter",
+  "omnitrix.alien.four_arms": "Four Arms",
+  "omnitrix.alien.stinkfly": "Stinkfly",
+  "omnitrix.alien.ripjaws": "Ripjaws",
+  "omnitrix.alien.upgrade": "Upgrade",
+  "omnitrix.alien.ghostfreak": "Ghostfreak",
+
+  "omnitrix.message.granted": "O Omnitrix se prendeu ao seu braço!",
+  "omnitrix.message.no_omnitrix": "Você ainda não encontrou o Omnitrix!",
+  "omnitrix.message.cooldown": "Omnitrix recarregando...",
+  "omnitrix.message.transformed": "Transformado!",
+  "omnitrix.message.malfunction": "Mau funcionamento! Transformação aleatória."
+}

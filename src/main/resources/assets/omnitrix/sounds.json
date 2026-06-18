@@ -1,0 +1,10 @@
+{
+  "omnitrix_open":        { "category": "player",  "sounds": [ { "name": "omnitrix:omnitrix_open",        "stream": false } ] },
+  "omnitrix_cycle":       { "category": "player",  "sounds": [ { "name": "omnitrix:omnitrix_cycle",       "stream": false } ] },
+  "omnitrix_transform":   { "category": "player",  "sounds": [ { "name": "omnitrix:omnitrix_transform",   "stream": false } ] },
+  "omnitrix_detransform": { "category": "player",  "sounds": [ { "name": "omnitrix:omnitrix_detransform", "stream": false } ] },
+  "omnitrix_equip":       { "category": "player",  "sounds": [ { "name": "omnitrix:omnitrix_equip",       "stream": false } ] },
+  "omnitrix_fail":        { "category": "player",  "sounds": [ { "name": "omnitrix:omnitrix_fail",        "stream": false } ] },
+  "meteorite_fall":       { "category": "weather", "sounds": [ { "name": "omnitrix:meteorite_fall",       "stream": false } ] },
+  "meteorite_impact":     { "category": "weather", "sounds": [ { "name": "omnitrix:meteorite_impact",     "stream": false } ] }
+}
