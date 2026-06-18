@@ -4,6 +4,11 @@ pluginManagement {
             name = 'Fabric'
             url = 'https://maven.fabricmc.net/'
         }
+        // Mixin plugin (required by GeckoLib on Fabric 1.19.3-1.20.4)
+        maven {
+            name = 'SpongePowered'
+            url = 'https://repo.spongepowered.org/repository/maven-public/'
+        }
         gradlePluginPortal()
     }
 }

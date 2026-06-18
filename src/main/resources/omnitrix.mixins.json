@@ -3,6 +3,7 @@
   "minVersion": "0.8",
   "package": "com.bentennyson.omnitrix.mixin",
   "compatibilityLevel": "JAVA_17",
+  "refmap": "omnitrix.refmap.json",
   "mixins": [
     "PlayerEntityMixin"
   ],

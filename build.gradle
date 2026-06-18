@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.2-SNAPSHOT'
+    id 'fabric-loom' version "${loom_version}"
     id 'maven-publish'
 }
 
@@ -11,9 +11,14 @@ base {
 }
 
 repositories {
+    // GeckoLib (animation library) — required for Fabric 1.19.3-1.20.4
     maven {
         name = 'GeckoLib'
         url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+        content {
+            includeGroupByRegex("software\\.bernie.*")
+            includeGroup("com.eliotlash.mclib")
+        }
     }
     maven { url 'https://maven.shedaniel.me/' }
     maven { url 'https://maven.terraformersmc.com/releases/' }
@@ -27,7 +32,9 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     // GeckoLib for animated 3D models (Omnitrix on player arm)
-    modImplementation "software.bernie.geckolib:geckolib-fabric-1.19.4:${project.geckolib_version}"
+    // For Fabric 1.19.4, GeckoLib also requires mclib:20 as a transitive dep
+    modImplementation "software.bernie.geckolib:geckolib-fabric-${project.minecraft_version}:${project.geckolib_version}"
+    implementation "com.eliotlash.mclib:mclib:20"
 }
 
 processResources {
@@ -50,6 +57,6 @@ java {
 
 jar {
     from("LICENSE") {
-        rename { "${it}_${project.archivesBaseName}" }
+        rename { "${it}_${project.archives_base_name}" }
     }
 }
