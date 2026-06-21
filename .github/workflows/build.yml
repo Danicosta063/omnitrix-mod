@@ -58,7 +58,7 @@ jobs:
       - name: Build (verbose with stacktrace)
         env:
           CI: true
-        run: ./gradlew build --no-daemon --stacktrace --info --warning-mode all
+        run: ./gradlew build --no-daemon --stacktrace --info --warning-mode all --refresh-dependencies
 
       - name: Upload .jar artifact
         if: success()

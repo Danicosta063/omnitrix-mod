@@ -11,6 +11,12 @@ base {
 }
 
 repositories {
+    // FabricMC Maven (explicit, listed first so Loom resolves Minecraft + Fabric API from here)
+    maven {
+        name = 'FabricMC'
+        url = 'https://maven.fabricmc.net/'
+    }
+
     // GeckoLib (animation library) — required for Fabric 1.19.3-1.20.4
     maven {
         name = 'GeckoLib'
@@ -29,12 +35,34 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // -------------------------------------------------------------------------
+    // Fabric API — exclude the "fabric-api-deprecated" BOM module.
+    //
+    // WHY: For MC 1.19.4, FabricMC published 'fabric-api-deprecated' as a
+    // POM-only aggregator (packaging=pom, no jar). Fabric Loom 1.2.x still
+    // tries to download a jar for it during the mod-remap stage, causing:
+    //   "Resource missing. [HTTP HEAD: .../fabric-api-deprecated-...jar]"
+    //
+    // The Omnitrix mod does NOT use any legacy/deprecated Fabric API module
+    // (we only use the v1/v2 modern APIs), so excluding it is fully safe.
+    // -------------------------------------------------------------------------
+    modImplementation("net.fabricmc.fabric-api:fabric-api:${project.fabric_version}") {
+        exclude group: 'net.fabricmc.fabric-api', module: 'fabric-api-deprecated'
+    }
 
     // GeckoLib for animated 3D models (Omnitrix on player arm)
     // For Fabric 1.19.4, GeckoLib also requires mclib:20 as a transitive dep
     modImplementation "software.bernie.geckolib:geckolib-fabric-${project.minecraft_version}:${project.geckolib_version}"
     implementation "com.eliotlash.mclib:mclib:20"
+}
+
+// -------------------------------------------------------------------------
+// Global exclusion as a safety net — guarantees no configuration/transitive
+// path can pull fabric-api-deprecated back in.
+// -------------------------------------------------------------------------
+configurations.all {
+    exclude group: 'net.fabricmc.fabric-api', module: 'fabric-api-deprecated'
 }
 
 processResources {
