@@ -1,0 +1,10 @@
+{"nodes": [
+  {"name": "Buffet", "description": "Perde HP quando tem buff ativo", "counters": ["Nick Fury", "Aegon", "Corvus Glaive"]},
+  {"name": "MD", "description": "Mystic Dispersion - ganha power quando você usa nullify", "counters": ["Champs de dano puro sem nullify"]},
+  {"name": "Unblockable", "description": "Ataques inimigos são unblockable", "counters": ["Phase (Kitty)", "Evade (Nick Fury)", "Autoblock (Domino)"]},
+  {"name": "Encroaching Stun", "description": "Mais tempo na luta = mais chance de stun", "counters": ["Champs de dano rápido (Kate Bishop, Shathra)"]},
+  {"name": "Aggression", "description": "Buffs de fury constantes", "counters": ["Champs de nullify (Doom, Magneto)"]},
+  {"name": "Do You Bleed?", "description": "Só champs com bleed causam dano", "counters": ["Bullseye", "Killmonger", "Blade", "Wolverine"]},
+  {"name": "Power Gain", "description": "Inimigo ganha power constante", "counters": ["Doctor Doom", "Photon", "Vision"]},
+  {"name": "Caltrops", "description": "Bloqueio causa dano em você", "counters": ["Hercules (immortal)", "Kitty (phase)"]}
+]}

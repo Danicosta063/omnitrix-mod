@@ -1,0 +1,8 @@
+{"stages": [
+  {"title": "Iniciante", "goals": ["Complete Act 1-4", "Aprenda parry e intercept", "Não gaste unidades cedo"]},
+  {"title": "Uncollected", "goals": ["Complete Act 5", "Foque em 5★ e 6★ shards", "Variants fáceis: V1, V4, V6"]},
+  {"title": "Cavalier", "goals": ["Complete Act 6", "R3 em um 6★ meta = Thronebreaker", "Book 1 completion"]},
+  {"title": "Thronebreaker", "goals": ["Foque em 7★ pulls", "R2 em 7★ meta = Paragon", "Act 7"]},
+  {"title": "Paragon", "goals": ["Necropolis com Herc", "R3 em 7★ = Valiant", "Book 2"]},
+  {"title": "Valiant", "goals": ["Carina's Challenges", "BG Gladiator's Circuit", "AW Diamond"]}
+]}
