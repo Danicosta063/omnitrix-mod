@@ -111,40 +111,36 @@ class GeminiService {
     }
   }
 
-  /// Testa se a API key é válida.
-  /// ACEITA QUALQUER FORMATO de chave (AIzaSy... ou AQ.Ab...)
+  /// Testa se a API key é válida usando o endpoint /models
+  /// (o mesmo que funciona no navegador direto).
+  /// ACEITA QUALQUER FORMATO de chave (AIzaSy... ou AQ.Ab... ou outros).
   static Future<bool> testApiKey(String apiKey) async {
     final trimmed = apiKey.trim();
     if (trimmed.isEmpty || trimmed.length < 20) {
+      print('[Gemini] Chave muito curta: ${trimmed.length} chars');
       return false;
     }
 
-    final url = Uri.parse('$_baseUrl/$_model:generateContent?key=$trimmed');
+    // Usa o endpoint /models que é mais confiável pra testar
+    final url = Uri.parse('$_baseUrl?key=$trimmed');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'contents': [
-            {
-              'role': 'user',
-              'parts': [
-                {'text': 'oi'}
-              ]
-            }
-          ],
-          'generationConfig': {
-            'maxOutputTokens': 10,
-          },
-        }),
-      ).timeout(const Duration(seconds: 20));
+      final response = await http.get(url).timeout(const Duration(seconds: 20));
 
-      if (response.statusCode == 200) return true;
+      print('[Gemini] Status ao testar: ${response.statusCode}');
 
-      print('Gemini API test failed: ${response.statusCode} - ${response.body}');
+      if (response.statusCode == 200) {
+        // Confirma que a resposta contém uma lista de modelos
+        final data = jsonDecode(response.body);
+        if (data['models'] != null && data['models'] is List) {
+          return true;
+        }
+      }
+
+      // Log do corpo do erro para debug
+      print('[Gemini] Body: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
       return false;
     } catch (e) {
-      print('Erro ao testar API key: $e');
+      print('[Gemini] Erro ao testar API key: $e');
       return false;
     }
   }
