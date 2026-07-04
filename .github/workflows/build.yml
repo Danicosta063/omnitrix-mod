@@ -1,0 +1,33 @@
+name: Build do Mod Omnitrix
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Dar permissao ao Gradle
+        run: chmod +x ./gradlew
+
+      - name: Compilar o mod
+        run: ./gradlew build
+
+      - name: Enviar o arquivo .jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnitrix-mod
+          path: build/libs/*.jar
+          
