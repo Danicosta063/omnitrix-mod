@@ -28,4 +28,5 @@ jobs:
         run: gradle wrapper --gradle-version 8.6
 
       - name: Compilar o mod
-        run: ./gradlew build
+        run: ./gradlew build --stacktrace --info
+
