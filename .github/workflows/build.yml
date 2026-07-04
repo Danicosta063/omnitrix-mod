@@ -19,15 +19,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Dar permissao ao Gradle
-        run: chmod +x ./gradlew
+      - name: Instalar o Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+
+      - name: Gerar o Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.6
 
       - name: Compilar o mod
         run: ./gradlew build
-
-      - name: Enviar o arquivo .jar
-        uses: actions/upload-artifact@v4
-        with:
-          name: omnitrix-mod
-          path: build/libs/*.jar
-          
