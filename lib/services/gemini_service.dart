@@ -21,17 +21,14 @@ class GeminiService {
           'API Key do Gemini não configurada. Vá em Configurações e adicione sua chave grátis.');
     }
 
-    // Construir o contexto completo (roster + perfil + base de conhecimento)
     final systemContext = CoachContextBuilder.buildSystemPrompt();
 
-    // Montar histórico da conversa (últimas 10 mensagens)
     final recentHistory = history.length > 10
         ? history.sublist(history.length - 10)
         : history;
 
     final contents = <Map<String, dynamic>>[];
 
-    // Adicionar o contexto do sistema como primeira mensagem
     contents.add({
       'role': 'user',
       'parts': [
@@ -48,7 +45,6 @@ class GeminiService {
       ],
     });
 
-    // Adicionar histórico
     for (final msg in recentHistory) {
       contents.add({
         'role': msg.isUser ? 'user' : 'model',
@@ -58,7 +54,6 @@ class GeminiService {
       });
     }
 
-    // Mensagem atual
     contents.add({
       'role': 'user',
       'parts': [
@@ -116,9 +111,15 @@ class GeminiService {
     }
   }
 
-  /// Testa se a API key é válida
+  /// Testa se a API key é válida.
+  /// ACEITA QUALQUER FORMATO de chave (AIzaSy... ou AQ.Ab...)
   static Future<bool> testApiKey(String apiKey) async {
-    final url = Uri.parse('$_baseUrl/$_model:generateContent?key=$apiKey');
+    final trimmed = apiKey.trim();
+    if (trimmed.isEmpty || trimmed.length < 20) {
+      return false;
+    }
+
+    final url = Uri.parse('$_baseUrl/$_model:generateContent?key=$trimmed');
     try {
       final response = await http.post(
         url,
@@ -128,14 +129,22 @@ class GeminiService {
             {
               'role': 'user',
               'parts': [
-                {'text': 'Diga apenas "ok"'}
+                {'text': 'oi'}
               ]
             }
           ],
+          'generationConfig': {
+            'maxOutputTokens': 10,
+          },
         }),
-      ).timeout(const Duration(seconds: 15));
-      return response.statusCode == 200;
-    } catch (_) {
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) return true;
+
+      print('Gemini API test failed: ${response.statusCode} - ${response.body}');
+      return false;
+    } catch (e) {
+      print('Erro ao testar API key: $e');
       return false;
     }
   }

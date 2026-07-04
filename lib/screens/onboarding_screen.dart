@@ -165,25 +165,44 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 Text('1. Acesse: aistudio.google.com/apikey',
                     style: TextStyle(color: AppTheme.textPrimary)),
                 Text('2. Faça login com sua conta Google', style: TextStyle(color: AppTheme.textPrimary)),
-                Text('3. Clique em "Create API Key"', style: TextStyle(color: AppTheme.textPrimary)),
-                Text('4. Copie a chave e cole abaixo', style: TextStyle(color: AppTheme.textPrimary)),
+                Text('3. Aceite os termos (marque as caixas)', style: TextStyle(color: AppTheme.textPrimary)),
+                Text('4. Clique em "Create API Key"', style: TextStyle(color: AppTheme.textPrimary)),
+                Text('5. Copie a chave e cole abaixo', style: TextStyle(color: AppTheme.textPrimary)),
               ],
             ),
           ),
           const SizedBox(height: 20),
           TextField(
             controller: _apiKeyController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Cole sua API Key aqui',
-              hintText: 'AIzaSy...',
-              prefixIcon: Icon(Icons.vpn_key, color: AppTheme.gold),
+              hintText: 'AIzaSy... ou AQ.Ab...',
+              prefixIcon: const Icon(Icons.vpn_key, color: AppTheme.gold),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.paste),
+                onPressed: () async {
+                  final data = await Clipboard.getData('text/plain');
+                  if (data?.text != null) {
+                    _apiKeyController.text = data!.text!.trim();
+                  }
+                },
+              ),
             ),
-            obscureText: true,
+            obscureText: false,
             style: const TextStyle(color: AppTheme.textPrimary),
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),
-            Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent)),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red),
+              ),
+              child: Text(_errorMessage!,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+            ),
           ],
           const SizedBox(height: 20),
           const Text(
@@ -200,7 +219,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       padding: const EdgeInsets.all(24),
       child: Row(
         children: [
-          // Indicadores
           Row(
             children: List.generate(3, (i) {
               return Container(
@@ -237,7 +255,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    // Última tela: valida e salva API key
     final key = _apiKeyController.text.trim();
     if (key.isEmpty) {
       setState(() => _errorMessage = 'Cola sua API key antes de continuar');
@@ -254,7 +271,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (!ok) {
       setState(() {
         _testing = false;
-        _errorMessage = 'Chave inválida ou sem acesso ao Gemini. Confere e tenta de novo.';
+        _errorMessage = 'Chave rejeitada pelo Google.\n\n'
+            'Verifique:\n'
+            '• A chave foi copiada inteira?\n'
+            '• Você aceitou os termos em aistudio.google.com?\n'
+            '• A chave está ativa (não foi deletada)?\n'
+            '• Sua região tem acesso ao Gemini API?';
       });
       return;
     }
