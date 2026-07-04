@@ -1,0 +1,19 @@
+# Arquivos gerados pelo Gradle
+.gradle/
+build/
+out/
+
+# Arquivos do NeoForge / desenvolvimento
+run/
+runs/
+logs/
+
+# Configuracoes de IDE
+.idea/
+*.iml
+.vscode/
+.eclipse/
+bin/
+
+# Arquivos do sistema
+.DS_Store
