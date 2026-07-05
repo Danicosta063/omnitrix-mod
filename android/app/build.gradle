@@ -56,24 +56,3 @@ kotlin {
 flutter {
     source = "../.."
 }
-
-    defaultConfig {
-        applicationId = "com.mcoccoach.ai"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = flutterVersionCode.toInteger()
-        versionName = flutterVersionName
-    }
-
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.debug
-            minifyEnabled = false
-            shrinkResources = false
-        }
-    }
-}
-
-flutter {
-    source = "../.."
-}
