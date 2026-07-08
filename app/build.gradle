@@ -1,41 +1,14 @@
-plugins {
-    id 'com.android.application'
-}
-
 android {
     namespace 'com.exemplo.mkbot'
     compileSdk 34
+    buildToolsVersion "34.0.0"   // <-- ADICIONE ESTA LINHA
 
     defaultConfig {
         applicationId "com.exemplo.mkbot"
-        minSdk 24          // dispatchGesture exige API 24+
+        minSdk 24
         targetSdk 34
         versionCode 1
         versionName "1.0"
     }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
-                          'proguard-rules.pro'
-        }
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-}
-
-dependencies {
-    // AndroidX core — Activity, Context, compat
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.core:core:1.12.0'
-
-    // ML Kit Text Recognition v2 — lê "WIN", "LOSE", "FIGHT", "TIME"
-    implementation 'com.google.mlkit:text-recognition:16.0.0'
-
-    // Gson — salvar/carregar a Q-table em JSON (aprendizado persistente)
-    implementation 'com.google.code.gson:gson:2.10.1'
+    // ... resto do arquivo (não mexe em mais nada)
 }
