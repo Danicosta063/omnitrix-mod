@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MK Bot</string>
+    <string name="accessibility_description">
+        Bot de aprendizado por reforço para Mortal Kombat Armageddon.
+        Captura a tela, detecta barras de vida e resultados, e simula toques
+        para jogar automaticamente. Necessário para acessibilidade para poder
+        ler a tela e tocar nela.
+    </string>
+    <string name="bot_off">Bot Desligado</string>
+    <string name="bot_on">Bot Ligado</string>
+    <string name="enable_accessibility">Ativar Acessibilidade</string>
+    <string name="status_label">Status do Bot</string>
+    <string name="training_label">Lutas treinadas: %1$d</string>
+    <string name="wins_label">Vitórias: %1$d</string>
+    <string name="losses_label">Derrotas: %1$d</string>
+    <string name="winrate_label">Taxa de vitória: %1$.1f%%</string>
+    <string name="reset_qtable">Resetar Aprendizado</string>
+    <string name="reset_confirm">Tem certeza? Isso apaga tudo que o bot aprendeu.</string>
+</resources>
