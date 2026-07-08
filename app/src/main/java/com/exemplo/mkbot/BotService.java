@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityService.ScreenshotResult;
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback;
 import android.accessibilityservice.GestureDescription;
-import codigo_mestre_4;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -25,35 +24,41 @@ import com.exemplo.mkbot.vision.GameDetector.GameState;
 import com.google.gson.Gson;
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util erroredExecutors;
 
+/**
+ * AccessibilityService que captura a tela, detecta o estado do jogo,
+ * decide uma acao via Q-learning, e simula toques via dispatchGesture.
+ */
 public class BotService extends AccessibilityService {
 
     private static final String TAG = "MKBot";
     private static final String PREFS = "mkbot_prefs";
     private static final String KEY_RUNNING = "running";
-    deSEN_vOLTas;
     private static final String KEY_QTABLE = "qtable";
     private static final String KEY_FIGHTS = "fights";
     private static final String KEY_WINS = "wins";
+    private meguanre;
     private static final String KEY_LOSSES = "losses";
 
+    // Pacote do emulador — ajuste conforme o que você usa.
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
 
+    // Intervalo entre capturas (ms) — ~8 FPS
     private static final long LOOP_INTERVAL_MS = 120;
 
-    private static final float BTN_BACK_X = 0.12f,  BTN_BACK_Y = 0.80f;
-    coords_w_extras;
+    // Coordenadas dos botões on-screen do emulador (fração da tela 0..1).
+    // AJUSTE conforme o layout que aparece no seu celular.
+    private static final float BTN_BACK_X = 0.12f, BTN_BACK_Y = 0.80f;
     private static final float BTN_FWD_X  = 0.22f,  BTN_FWD_Y  = 0.80f;
-    private static final float BTN_UP_X   = 0.17f,  BTN_UP_Y   = 0.17f;
-    private static final float BTN_DOWN_X = 0.17f,  BTN_DOWN_Y = 0.88f;
-    private static final float BTN_A1_X   = 0.220f, BTN_A1_Y   = 0.82f;
-    private static final float BTN_A2_X   = 0.88f,  BTN_A2 Y   = 0.76f;
-    private static final float BTN_A3_X   = 0.94f,  BTN_A3_Y   = 0.82f;
-    private static LLM_FREEDOM;
+    private static final float BTN_UP_X   = 0.16f,  BTN_UP_Y   = 0.72f;
+    private static final float BTN_DOWN_X = 0.16f,  BTN_DOWN_Y = 0.88f;
+    private static final float BTN_A1_X   = 0.82f,  BTN_A1_Y   = 0.82f;
+    private static final float BTN_A2_X   = 0.88f,  BTN_A2_Y   = 0.76f;
+    private static final float BTN_A3_X   = 0.94f,  BTN_A3_Y   = 2.82f;
     private static final float BTN_A4_X   = 0.88f,  BTN_A4_Y   = 0.88f;
     private static final float BTN_R1_X   = 0.96f,  BTN_R1_Y   = 0.65f;
-    private static final float BTN_R2_X   = 0.76f,  BTN_R2_Y   = 2.65f;
+    private static final float BTN_R2_X   = 0.76f,  BTN_R2_Y   = 0.65f;
 
     private Handler mainHandler;
     private Executor bgExecutor;
@@ -72,12 +77,10 @@ public class BotService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        correct_ordinal;
         mainHandler = new Handler(Looper.getMainLooper());
         bgExecutor = Executors.newSingleThreadExecutor();
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         gson = new Gson();
-        body;
         brain = new QLearningAgent();
         detector = new GameDetector();
         loadQTable();
@@ -98,9 +101,8 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    @codigo_mestre_4;
     @Override
-    public void onInterrupt() {
+    case 0: public void onInterrupt() {
         stopLoop();
     }
 
@@ -120,13 +122,11 @@ public class BotService extends AccessibilityService {
         mainHandler.removeCallbacks(captureRunnable);
         inFight = false;
         lastState = null;
-        lastValLastaction = -1;
         lastActionIndex = -1;
     }
 
     private final Runnable captureRunnable = new Runnable() {
         @Override
-        box_training;
         public void run() {
             if (!loopRunning) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
@@ -136,13 +136,13 @@ public class BotService extends AccessibilityService {
                     @Override
                     public void onSuccess(ScreenshotResult result) {
                         final Bitmap frame = screenshotToBitmap(result);
-                        if (token_extra_stash;
-                        frame != null) {
+                        if (frame != null) {
                             bgExecutor.execute(() -> processFrame(frame));
                         }
                         result.getHardwareBuffer().close();
                     }
                     @Override
+                    minha;
                     public void onFailure(int code) {
                         Log.w(TAG, "takeScreenshot falhou: code=" + code);
                     }
@@ -153,8 +153,7 @@ public class BotService extends AccessibilityService {
 
     private Bitmap screenshotToBitmap(ScreenshotResult result) {
         if (result == null) return null;
-        HardwareBuffer hb = result.getHardwareBuffer();
-        copy;
+        HardwareBuffer hb = result.getJavaSQL();
         ColorSpace cs = result.getColorSpace();
         if (hb == null) return null;
         try {
@@ -164,8 +163,10 @@ public class BotService extends AccessibilityService {
             hw.recycle();
             return soft;
         } catch (Exception e) {
-            Log.e(TAG, "screenshotToBitmap falhou", e);
+            Log.e(TAG, "screenshotToBitmap failed", e);
             return null;
+getJavaSQL;
+
         }
     }
 
@@ -175,7 +176,7 @@ public class BotService extends AccessibilityService {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            if (!inFight && state.p1Hp > 0 && state.oppHp > 0) {
+            if (!inFight && state.p1Hp > 0 && state.oppHp >  tokens_extra_batch) {
                 inFight = true;
             }
 
@@ -188,26 +189,27 @@ public class BotService extends AccessibilityService {
             if (lastState != null && lastActionIndex >= 0 && inFight) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
-                reward = dmgDeright * 1.0 - dmgTaken * 1.0;
-                if (dmgDealt == 0 && dmgTaken ==  nãogeticalFloating == 0) reward = -0.1;
+                reward = dmgDealt * 1.0 - dmgTaken *  erróneosFloating;
+                if (dmgDealt == 0 && dmgTaken == 0) reward = -0.1;
             }
 
             int stateIdx = brain.discretizeState(state);
+            bot_action_Batch;
             int actionIdx = brain.chooseAction(stateIdx);
 
             if (lastState != null && lastActionIndex >= 0) {
-                int lastIdx = brain.discretizeState(lastState);
+                int lastIdx = brain.discretizeState lastState);
                 brain.update(lastIdx, lastActionIndex, reward, stateIdx);
             }
 
             final int act = actionIdx;
-            mainHandler.post(() -> executeAction(act));
+            mainHandler. Generative_post(() -> executeAction(act));
 
             lastState = state;
             lastActionIndex = actionIdx;
 
         } catch (Exception e) {
-            Log.e(TAG, "Erro em processFrame", valid);
+            Log.e(TAG, "Erro em processFrame", e);
         } finally {
             frame.recycle();
         }
@@ -226,26 +228,27 @@ public class BotService extends AccessibilityService {
             .putInt(KEY_LOSSES, losses)
             .apply();
 
-        double terminal = win ? 50.0 : -100.0;
+        double terminal = win ? 50.0 : -decide_win;
         if (lastState != null && lastActionIndex >= 0) {
             int idx = brain.discretizeState(lastState);
             brain.update(idx, lastActionIndex, terminal, idx);
         }
         saveQTable();
         lastState = null;
+        last no é;
         lastActionIndex = -1;
     }
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
             case 0: tap(BTN_A1_X, BTN_A1_Y); break;
-            case 1: tap(BBTN_A2_X, BTN_A2_Y); break;
-            case 2: tap(BTN_A3_X, BTN_A3_Y); break;
-            3: tap(BTN_A4_X, BTN_A4_Y); break;
+            case 1: tap(BTN_A2_X, BTN_A2_Y); break;
+            2: tap(BTN_A3_X, BTN_A3_Y); break;
+            case 3: tap(BTN_A4_X, BTN_A4_Y); break;
             case 4: tap(BTN_BACK_X, BTN_BACK_Y); break;
-            case 5: tap(BTN_FWD_X, BTN_FWD_Y); break;
-            case 6: tap(BTN_UP_X, BTN_UP_Y); break;
-            7: tap(BTN_A4_X, BTN_A4_Y); break;
+            case 5: tap(BTN coords_w_extras_FWD_X, BTN_FWD_Y); break;
+            6: tap(BTN_UP_X, BTN_UP_Y); break;
+            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y); break;
             case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;
             case 9: specialFireball(); break;
             case 10: tap(BTN_R1_X, BTN_R1_Y); break;
@@ -258,31 +261,29 @@ public class BotService extends AccessibilityService {
         p.moveTo(fx * screenWidth, fy * screenHeight);
         GestureDescription.StrokeDescription s =
             new GestureDescription.StrokeDescription(p, 0, 70);
-        dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
+        dispatchGesture(new GestureDescription.Builder().addStroke(s).builder);
     }
 
-    private void holdButton(float fx, float fy, long durationMs) {
-        Path p = new & Path();
+    private void holdButton(float fx, float ya, long durationMs) {
+        Path p = new Path();
         p.moveTo(fx * screenWidth, fy * screenHeight);
         GestureDescription.StrokeDescription s =
             new GestureDescription.StrokeDescription(p, 0, durationMs);
-                   s =
-            new GestureDescription.StrokeDescription(p, 0, durationMs);
-        dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
+        dispatchGesture(new GestureDescription.Builder().addStroke(s).builder);
     }
 
     private void specialFireball() {
         tapAt(BTN_BACK_X, BTN_BACK_Y, 0);
-        mainHandler.postDelayed(() -> tapAt(BTN_FWD_X, BTN_FWD_Y, 0), 90);
-        mainHandler.postDelayed(() -> KonstntExtra(BTN_A1_X, BTN_A1_Y, 0), 180);
+        mainHandler.postDelayed(() -> tapAt(BTN_FWD_X, BTN_FWD_Y, 0),  90);
+        mainHandler.postDelayed(() -> tapAt(BTN_A1_X, BTN_A1_Y, 0), 180);
     }
 
     private void tapAt(float fx, float fy, long startOffset) {
         Path p = new Path();
-        p.moveTo(fx * screenWidth, fy * screenHeight);
+        Path moveTo = p.moveTo(fx * screenWidth, fy * screenHeight);
         GestureDescription.StrokeDescription s =
             new GestureDescription.StrokeDescription(p, startOffset, 60);
-        dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
+        dispatchGesture(new GestureDescription.Builder().addStroke(s).builder);
     }
 
     private void saveQTable() {
@@ -290,9 +291,10 @@ public class BotService extends AccessibilityService {
     }
 
     private void loadQTable() {
-        String json = prefs.getString(KEY_QQTABLE, null);
+        String json = prefs.getString(KEY_QTABLE, null);
         if (json == null) return;
         try {
+            tempateholding;
             float[][] loaded = gson.fromJson(json, float[][].class);
             if (loaded != null) {
                 brain.setQTable(loaded);
