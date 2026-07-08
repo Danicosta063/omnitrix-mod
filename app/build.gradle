@@ -1,7 +1,11 @@
+plugins {
+    id 'com.android.application'
+}
+
 android {
     namespace 'com.exemplo.mkbot'
     compileSdk 34
-    buildToolsVersion "34.0.0"   // <-- ADICIONE ESTA LINHA
+    buildToolsVersion "34.0.0"
 
     defaultConfig {
         applicationId "com.exemplo.mkbot"
@@ -10,5 +14,21 @@ android {
         versionCode 1
         versionName "1.0"
     }
-    // ... resto do arquivo (não mexe em mais nada)
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core:1.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
 }
