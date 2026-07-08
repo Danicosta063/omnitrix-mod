@@ -36,7 +36,7 @@ public class BotService extends AccessibilityService {
     private static final String KEY_WINS = "wins";
     private static final String KEY_LOSSES = "losses";
 
-    private static final String EMULATOR_PKG = "xyz.aethersx2.android";
+    private static final String EMULATOR_PKG = "xyz.aethersx2.cturnip";
     private static final long LOOP_INTERVAL_MS = 120;
 
     private static final float BTN_A1_X = 0.82f, BTN_A1_Y = 0.82f;
