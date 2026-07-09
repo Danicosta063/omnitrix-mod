@@ -170,8 +170,13 @@ public class BotService extends AccessibilityService {
                 Log.i(TAG, "Luta iniciada P1=" + state.p1Hp + " opp=" + state.oppHp);
             }
 
+            // SE NAO ESTA EM LUTA, NAO FAZ NADA - so observa
+            if (!inFight) {
+                return;
+            }
+
             // Detecta pausa: movimento quase zero por varios frames
-            if (inFight && state.motion < 3) {
+            if (state.motion < 3) {
                 pausedFrames++;
                 if (pausedFrames > 5) {
                     return; // pausado, nao toca
@@ -180,14 +185,13 @@ public class BotService extends AccessibilityService {
                 pausedFrames = 0;
             }
 
-            if (inFight) {
-                if (state.oppHp <= 0) { onFightEnd(true);  return; }
-                if (state.p1Hp  <= 0) { onFightEnd(false); return; }
-            }
+            // Detecta fim de luta
+            if (state.oppHp <= 0) { onFightEnd(true);  return; }
+            if (state.p1Hp  <= 0) { onFightEnd(false); return; }
 
             // Recompensa densa: dano causado - dano sofrido + bonus por acerto
             double reward = 0;
-            if (lastState != null && lastActionIndex >= 0 && inFight) {
+            if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
