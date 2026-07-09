@@ -167,13 +167,14 @@ public class BotService extends AccessibilityService {
             Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
                        " motion=" + state.motion + " flash=" + state.hitFlash);
 
-            // ENTRAR em luta: movimento suficiente por 2 frames seguidos
-            if (!inFight && state.motion > 3) {
+            // ENTRAR em luta: movimento ALTO por 3 frames seguidos
+            // Threshold 15 (alto) pra nao disparar em menu/animacao leve
+            if (!inFight && state.motion > 15) {
                 motionStartFrames++;
-                if (motionStartFrames >= 2) {
+                if (motionStartFrames >= 3) {
                     inFight = true;
                     pausedFrames = 0;
-                    Log.i(TAG, "Luta iniciada por movimento. motion=" + state.motion);
+                    Log.i(TAG, "Luta iniciada. motion=" + state.motion);
                 }
             } else if (!inFight) {
                 motionStartFrames = 0;
@@ -184,8 +185,8 @@ public class BotService extends AccessibilityService {
                 return;
             }
 
-            // Detecta pausa: movimento quase zero por varios frames
-            if (state.motion < 3) {
+            // Detecta pausa: movimento baixo por varios frames
+            if (state.motion < 5) {
                 pausedFrames++;
                 if (pausedFrames > 10) {
                     if (pausedFrames > 30) {
