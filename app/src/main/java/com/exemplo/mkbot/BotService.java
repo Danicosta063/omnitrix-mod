@@ -13,7 +13,6 @@ import android.hardware.HardwareBuffer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
@@ -36,16 +35,14 @@ public class BotService extends AccessibilityService {
     private static final String KEY_WINS = "wins";
     private static final String KEY_LOSSES = "losses";
 
-    // NetherSX2 normal (app vermelho) usa o mesmo pacote do AetherSX2
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
 
     // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
-    // Conforme layout que você mediu no NetherSX2
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f; // Quadrado
-    private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f; // Triângulo
+    private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f; // Triangulo
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f; // X/Cross
-    private static final float BTN_A4_X = 0.925f, BTN_A4_Y = 0.741f; // Círculo
+    private static final float BTN_A4_X = 0.925f, BTN_A4_Y = 0.741f; // Circulo
     private static final float BTN_BACK_X = 0.083f, BTN_BACK_Y = 0.731f; // Esquerda
     private static final float BTN_FWD_X = 0.215f, BTN_FWD_Y = 0.741f;  // Direita
     private static final float BTN_UP_X = 0.139f, BTN_UP_Y = 0.593f;    // Cima
@@ -64,7 +61,7 @@ public class BotService extends AccessibilityService {
     private boolean inFight = false;
     private int lastActionIndex = -1;
     private GameState lastState = null;
-    private int screenWidth, screenHeight;
+    private int screenWidth = 1, screenHeight = 1;
 
     @Override
     protected void onServiceConnected() {
@@ -76,10 +73,7 @@ public class BotService extends AccessibilityService {
         brain = new QLearningAgent();
         detector = new GameDetector();
         loadQTable();
-        DisplayMetrics dm = getResources().getDisplayMetrics();
-        screenWidth = dm.widthPixels;
-        screenHeight = dm.heightPixels;
-        Log.i(TAG, "BotService conectado. Tela=" + screenWidth + "x" + screenHeight);
+        Log.i(TAG, "BotService conectado.");
     }
 
     @Override
@@ -162,6 +156,9 @@ public class BotService extends AccessibilityService {
 
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
+        // CORRECAO: usa dimensoes reais do screenshot (funciona em landscape)
+        screenWidth = frame.getWidth();
+        screenHeight = frame.getHeight();
         try {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
@@ -232,17 +229,17 @@ public class BotService extends AccessibilityService {
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
-            case 0: tap(BTN_A1_X, BTN_A1_Y); break; // Quadrado (Attack 1)
-            case 1: tap(BTN_A2_X, BTN_A2_Y); break; // Triângulo (Attack 2)
-            case 2: tap(BTN_A3_X, BTN_A3_Y); break; // X (Attack 3)
-            case 3: tap(BTN_A4_X, BTN_A4_Y); break; // Círculo (Attack 4)
-            case 4: tap(BTN_BACK_X, BTN_BACK_Y); break; // Recuar
-            case 5: tap(BTN_FWD_X, BTN_FWD_Y); break;   // Avançar
-            case 6: tap(BTN_UP_X, BTN_UP_Y); break;     // Pular
-            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y); break; // Agachar
-            case 8: tap(BTN_R2_X, BTN_R2_Y); break;     // Block
-            case 9: tap(BTN_R1_X, BTN_R1_Y); break;     // Throw
-            case 10: break; // Idle
+            case 0: tap(BTN_A1_X, BTN_A1_Y); break;
+            case 1: tap(BTN_A2_X, BTN_A2_Y); break;
+            case 2: tap(BTN_A3_X, BTN_A3_Y); break;
+            case 3: tap(BTN_A4_X, BTN_A4_Y); break;
+            case 4: tap(BTN_BACK_X, BTN_BACK_Y); break;
+            case 5: tap(BTN_FWD_X, BTN_FWD_Y); break;
+            case 6: tap(BTN_UP_X, BTN_UP_Y); break;
+            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y); break;
+            case 8: tap(BTN_R2_X, BTN_R2_Y); break;
+            case 9: tap(BTN_R1_X, BTN_R1_Y); break;
+            case 10: break;
             default: break;
         }
     }
