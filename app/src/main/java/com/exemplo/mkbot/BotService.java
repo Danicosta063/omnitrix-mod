@@ -45,6 +45,7 @@ public class BotService extends AccessibilityService {
 
     // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
     // R2 = Block, R1 = Especial, L1 = Pegar armas
+    // L1 e R1 tem Y=358 (corrigido pelo usuario)
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
     private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
@@ -54,8 +55,8 @@ public class BotService extends AccessibilityService {
     private static final float BTN_UP_X = 0.139f, BTN_UP_Y = 0.593f;
     private static final float BTN_DOWN_X = 0.150f, BTN_DOWN_Y = 0.880f;
     private static final float BTN_R2_X = 0.858f, BTN_R2_Y = 0.218f;
-    private static final float BTN_R1_X = 0.858f, BTN_R1_Y = 0.241f;
-    private static final float BTN_L1_X = 0.146f, BTN_L1_Y = 0.246f;
+    private static final float BTN_R1_X = 0.858f, BTN_R1_Y = 0.331f;
+    private static final float BTN_L1_X = 0.146f, BTN_L1_Y = 0.331f;
 
     private Handler mainHandler;
     private Executor bgExecutor;
@@ -357,9 +358,9 @@ public class BotService extends AccessibilityService {
             case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
             case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
             case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
-            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;   // Block - segurar
-            case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;   // Especial - segurar 250ms
-            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;  // Pegar arma - segurar 250ms
+            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;
+            case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;
+            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
             case 11: break;
             default: break;
         }
