@@ -357,9 +357,9 @@ public class BotService extends AccessibilityService {
             case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
             case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
             case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
-            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;
-            case 9: tap(BTN_R1_X, BTN_R1_Y, 150); break;
-            case 10: tap(BTN_L1_X, BTN_L1_Y, 150); break;
+            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;   // Block - segurar
+            case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;   // Especial - segurar 250ms
+            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;  // Pegar arma - segurar 250ms
             case 11: break;
             default: break;
         }
