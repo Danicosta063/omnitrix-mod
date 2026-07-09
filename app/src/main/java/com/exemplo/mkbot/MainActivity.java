@@ -28,13 +28,14 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_HITS = "hits";
     private static final String KEY_COMBOS = "combos";
     private static final String KEY_BLOCKS = "blocks";
+    private static final String KEY_FATALITIES = "fatalities";
     private static final String KEY_QTABLE = "qtable";
 
     private static final String SERVICE_NAME = "com.exemplo.mkbot/.BotService";
 
     private Button btnToggle, btnEnableA11y, btnReset;
     private TextView txtStatus, txtTraining, txtWins, txtLosses, txtWinRate;
-    private TextView txtPoints, txtHits, txtCombos, txtBlocks;
+    private TextView txtPoints, txtHits, txtCombos, txtBlocks, txtFatalities;
     private SharedPreferences prefs;
 
     @Override
@@ -56,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
         txtHits = findViewById(R.id.txtHits);
         txtCombos = findViewById(R.id.txtCombos);
         txtBlocks = findViewById(R.id.txtBlocks);
+        txtFatalities = findViewById(R.id.txtFatalities);
 
         btnToggle.setOnClickListener(v -> onToggle());
         btnEnableA11y.setOnClickListener(v -> openAccessibilitySettings());
@@ -111,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
                     ed.putInt(KEY_HITS, 0);
                     ed.putInt(KEY_COMBOS, 0);
                     ed.putInt(KEY_BLOCKS, 0);
+                    ed.putInt(KEY_FATALITIES, 0);
                     ed.apply();
                     updateUI();
                     Toast.makeText(this, "Aprendizado resetado.",
@@ -142,6 +145,7 @@ public class MainActivity extends AppCompatActivity {
         int hits = prefs.getInt(KEY_HITS, 0);
         int combos = prefs.getInt(KEY_COMBOS, 0);
         int blocks = prefs.getInt(KEY_BLOCKS, 0);
+        int fatalities = prefs.getInt(KEY_FATALITIES, 0);
         float winrate = (fights > 0) ? (100f * wins / fights) : 0f;
 
         txtTraining.setText(getString(R.string.training_label, fights));
@@ -152,5 +156,6 @@ public class MainActivity extends AppCompatActivity {
         txtHits.setText(getString(R.string.hits_label, hits));
         txtCombos.setText(getString(R.string.combos_label, combos));
         txtBlocks.setText(getString(R.string.blocks_label, blocks));
+        txtFatalities.setText(getString(R.string.fatalities_label, fatalities));
     }
 }
