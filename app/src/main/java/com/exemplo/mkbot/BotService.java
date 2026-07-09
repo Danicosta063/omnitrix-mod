@@ -43,7 +43,6 @@ public class BotService extends AccessibilityService {
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
 
-    // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
     private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
@@ -182,10 +181,9 @@ public class BotService extends AccessibilityService {
             Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
                        " motion=" + state.motion + " flash=" + state.hitFlash);
 
-            // ENTRAR em luta: motion ALTO E HP dos dois lados > 0
-            // (dupla verificacao: menu animado nao tem barras de vida)
-            if (!inFight && !waitingNewFight && state.motion > 15
-                    && state.p1Hp > 0 && state.oppHp > 0) {
+            // ENTRAR em luta: motion ALTO (threshold 20) por 3 frames
+            // Sem exigir HP, porque a deteccao de cor pode falhar
+            if (!inFight && !waitingNewFight && state.motion > 20) {
                 motionStartFrames++;
                 if (motionStartFrames >= 3) {
                     inFight = true;
@@ -194,14 +192,12 @@ public class BotService extends AccessibilityService {
                     waitingNewFight = false;
                     pausedFrames = 0;
                     consecutiveHits = 0;
-                    Log.i(TAG, "Luta iniciada. motion=" + state.motion +
-                              " P1=" + state.p1Hp + " opp=" + state.oppHp);
+                    Log.i(TAG, "Luta iniciada. motion=" + state.motion);
                 }
             } else if (!inFight) {
                 motionStartFrames = 0;
             }
 
-            // SE NAO ESTA EM LUTA, NAO FAZ NADA
             if (!inFight) {
                 return;
             }
