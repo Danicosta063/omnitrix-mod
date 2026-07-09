@@ -44,19 +44,18 @@ public class BotService extends AccessibilityService {
     private static final long LOOP_INTERVAL_MS = 120;
 
     // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
-    // Mapeamento CORRETO conforme usuario:
-    //   R2 = Block, R1 = Especial, L1 = Pegar armas
-    private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f; // Quadrado
-    private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f; // Triangulo
-    private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f; // X/Cross
-    private static final float BTN_A4_X = 0.925f, BTN_A4_Y = 0.741f; // Circulo
-    private static final float BTN_BACK_X = 0.083f, BTN_BACK_Y = 0.731f; // Esquerda
-    private static final float BTN_FWD_X = 0.215f, BTN_FWD_Y = 0.741f;  // Direita
-    private static final float BTN_UP_X = 0.139f, BTN_UP_Y = 0.593f;    // Cima
-    private static final float BTN_DOWN_X = 0.150f, BTN_DOWN_Y = 0.880f; // Baixo
-    private static final float BTN_R2_X = 0.858f, BTN_R2_Y = 0.218f;    // Block (R2)
-    private static final float BTN_R1_X = 0.858f, BTN_R1_Y = 0.241f;    // Especial (R1)
-    private static final float BTN_L1_X = 0.146f, BTN_L1_Y = 0.246f;    // Pegar arma (L1)
+    // R2 = Block, R1 = Especial, L1 = Pegar armas
+    private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
+    private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
+    private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
+    private static final float BTN_A4_X = 0.925f, BTN_A4_Y = 0.741f;
+    private static final float BTN_BACK_X = 0.083f, BTN_BACK_Y = 0.731f;
+    private static final float BTN_FWD_X = 0.215f, BTN_FWD_Y = 0.741f;
+    private static final float BTN_UP_X = 0.139f, BTN_UP_Y = 0.593f;
+    private static final float BTN_DOWN_X = 0.150f, BTN_DOWN_Y = 0.880f;
+    private static final float BTN_R2_X = 0.858f, BTN_R2_Y = 0.218f;
+    private static final float BTN_R1_X = 0.858f, BTN_R1_Y = 0.241f;
+    private static final float BTN_L1_X = 0.146f, BTN_L1_Y = 0.246f;
 
     private Handler mainHandler;
     private Executor bgExecutor;
@@ -184,7 +183,6 @@ public class BotService extends AccessibilityService {
             Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
                        " motion=" + state.motion + " flash=" + state.hitFlash);
 
-            // ENTRAR em luta: movimento ALTO por 3 frames seguidos
             if (!inFight && !waitingNewFight && state.motion > 15) {
                 motionStartFrames++;
                 if (motionStartFrames >= 3) {
@@ -200,25 +198,20 @@ public class BotService extends AccessibilityService {
                 motionStartFrames = 0;
             }
 
-            // SE NAO ESTA EM LUTA, NAO FAZ NADA
             if (!inFight) {
                 return;
             }
 
-            // Guarda HP atual pra usar na decisao de fim
             p1HpAtEnd = state.p1Hp;
             oppHpAtEnd = state.oppHp;
 
-            // Detecta pausa/fim: movimento baixo por varios frames
             if (state.motion < 5) {
                 pausedFrames++;
-                // 50 frames parado = ~6 segundos = luta acabou (tela de resultado)
                 if (pausedFrames > 50 && !fightEnded) {
                     boolean win = decideWinner();
                     onFightEnd(win);
                     return;
                 }
-                // 15 frames parado = ~1.8 segundos = pausado, parar de tocar
                 if (pausedFrames > 15) {
                     return;
                 }
@@ -226,12 +219,10 @@ public class BotService extends AccessibilityService {
                 pausedFrames = 0;
             }
 
-            // Se a luta acabou, nao fazer mais nada (esperando proxima)
             if (fightEnded) {
                 return;
             }
 
-            // Conta acertos (hitFlash) - pontos de combo
             if (state.hitFlash) {
                 int hits = prefs.getInt(KEY_HITS, 0) + 1;
                 prefs.edit().putInt(KEY_HITS, hits).apply();
@@ -246,7 +237,6 @@ public class BotService extends AccessibilityService {
                 consecutiveHits = 0;
             }
 
-            // Recompensa densa + pontos
             double reward = 0;
             if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
@@ -257,7 +247,6 @@ public class BotService extends AccessibilityService {
                 if (dmgDealt > 0) addPoints(dmgDealt);
                 if (dmgTaken > 0) addPoints(-dmgTaken);
 
-                // Ponto por bloquear (R2 sem levar dano)
                 if (lastActionIndex == 8 && dmgTaken == 0 && state.motion > 5) {
                     int blocks = prefs.getInt(KEY_BLOCKS, 0) + 1;
                     prefs.edit().putInt(KEY_BLOCKS, blocks).apply();
@@ -288,14 +277,13 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    // Decide quem ganhou baseado no HP guardado quando luta terminou
     private boolean decideWinner() {
         Log.i(TAG, "Decidindo vencedor: P1=" + p1HpAtEnd + " opp=" + oppHpAtEnd);
         if (oppHpAtEnd <= 0 && p1HpAtEnd > 0) return true;
         if (p1HpAtEnd <= 0 && oppHpAtEnd > 0) return false;
         if (p1HpAtEnd > oppHpAtEnd) return true;
         if (oppHpAtEnd > p1HpAtEnd) return false;
-        return false; // empate = derrota
+        return false;
     }
 
     private void addPoints(int amount) {
@@ -334,7 +322,6 @@ public class BotService extends AccessibilityService {
         Log.i(TAG, "Luta fim win=" + win + " total=" + fights +
               " V=" + wins + " D=" + losses + " pontos=" + prefs.getInt(KEY_POINTS, 0));
 
-        // Se venceu, tentar fatality (Head Smash = Fwd, Fwd, Circle)
         if (win) {
             doingFatality = true;
             mainHandler.postDelayed(() -> doFatality(), 1500);
@@ -343,7 +330,6 @@ public class BotService extends AccessibilityService {
             addPoints(30);
         }
 
-        // Resetar apos 10 segundos pra proxima luta
         mainHandler.postDelayed(() -> {
             fightEnded = false;
             doingFatality = false;
@@ -354,37 +340,36 @@ public class BotService extends AccessibilityService {
         }, 10000);
     }
 
-    // Fatality: Head Smash = Forward, Forward, Circle
     private void doFatality() {
         Log.i(TAG, "Tentando fatality: Head Smash (Fwd, Fwd, Circle)");
-        tap(BTN_FWD_X, BTN_FWD_Y);
-        mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y), 300);
-        mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y), 600);
+        tap(BTN_FWD_X, BTN_FWD_Y, 70);
+        mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 70), 300);
+        mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 600);
     }
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
-            case 0: tap(BTN_A1_X, BTN_A1_Y); break;              // Quadrado
-            case 1: tap(BTN_A2_X, BTN_A2_Y); break;              // Triangulo
-            case 2: tap(BTN_A3_X, BTN_A3_Y); break;              // X/Cross
-            case 3: tap(BTN_A4_X, BTN_A4_Y); break;              // Circulo
-            case 4: tap(BTN_BACK_X, BTN_BACK_Y); break;          // Recuar
-            case 5: tap(BTN_FWD_X, BTN_FWD_Y); break;            // Avancar
-            case 6: tap(BTN_UP_X, BTN_UP_Y); break;              // Pular
-            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y); break;          // Agachar
-            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;  // Block (R2 - segurar)
-            case 9: tap(BTN_R1_X, BTN_R1_Y); break;              // Especial (R1)
-            case 10: tap(BTN_L1_X, BTN_L1_Y); break;             // Pegar arma (L1)
-            case 11: break;                                      // Idle
+            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
+            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
+            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
+            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;
+            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;
+            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
+            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
+            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
+            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;
+            case 9: tap(BTN_R1_X, BTN_R1_Y, 150); break;
+            case 10: tap(BTN_L1_X, BTN_L1_Y, 150); break;
+            case 11: break;
             default: break;
         }
     }
 
-    private void tap(float fx, float fy) {
+    private void tap(float fx, float fy, long durationMs) {
         Path p = new Path();
         p.moveTo(fx * screenWidth, fy * screenHeight);
         GestureDescription.StrokeDescription s =
-            new GestureDescription.StrokeDescription(p, 0, 70);
+            new GestureDescription.StrokeDescription(p, 0, durationMs);
         dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
     }
 
