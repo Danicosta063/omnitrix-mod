@@ -66,7 +66,6 @@ public class BotService extends AccessibilityService {
     private boolean inFight = false;
     private boolean fightEnded = false;
     private boolean doingFatality = false;
-    private boolean waitingNewFight = false;
     private int lastActionIndex = -1;
     private GameState lastState = null;
     private int pausedFrames = 0;
@@ -123,7 +122,6 @@ public class BotService extends AccessibilityService {
         inFight = false;
         fightEnded = false;
         doingFatality = false;
-        waitingNewFight = false;
         lastState = null;
         lastActionIndex = -1;
         Log.i(TAG, "Loop parado.");
@@ -179,17 +177,17 @@ public class BotService extends AccessibilityService {
             if (state == null) return;
 
             Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
-                       " motion=" + state.motion + " flash=" + state.hitFlash);
+                       " motion=" + state.motion + " flash=" + state.hitFlash +
+                       " inFight=" + inFight + " fightEnded=" + fightEnded);
 
-            // ENTRAR em luta: motion ALTO (threshold 20) por 3 frames
-            // Sem exigir HP, porque a deteccao de cor pode falhar
-            if (!inFight && !waitingNewFight && state.motion > 20) {
+            // ENTRAR em luta: motion ALTO por 3 frames seguidos
+            // Só entra se não tiver fightEnded (proteção contra contar 2x)
+            if (!inFight && !fightEnded && state.motion > 20) {
                 motionStartFrames++;
                 if (motionStartFrames >= 3) {
                     inFight = true;
                     fightEnded = false;
                     doingFatality = false;
-                    waitingNewFight = false;
                     pausedFrames = 0;
                     consecutiveHits = 0;
                     Log.i(TAG, "Luta iniciada. motion=" + state.motion);
@@ -198,6 +196,7 @@ public class BotService extends AccessibilityService {
                 motionStartFrames = 0;
             }
 
+            // SE NAO ESTA EM LUTA, NAO FAZ NADA
             if (!inFight) {
                 return;
             }
@@ -205,13 +204,16 @@ public class BotService extends AccessibilityService {
             p1HpAtEnd = state.p1Hp;
             oppHpAtEnd = state.oppHp;
 
+            // Detecta pausa/fim: movimento baixo por varios frames
             if (state.motion < 5) {
                 pausedFrames++;
-                if (pausedFrames > 50 && !fightEnded) {
+                // 40 frames parado = ~4.8 segundos = luta acabou
+                if (pausedFrames > 40 && !fightEnded) {
                     boolean win = decideWinner();
                     onFightEnd(win);
                     return;
                 }
+                // 15 frames parado = ~1.8 segundos = pausado
                 if (pausedFrames > 15) {
                     return;
                 }
@@ -295,7 +297,6 @@ public class BotService extends AccessibilityService {
         if (fightEnded) return;
         fightEnded = true;
         inFight = false;
-        waitingNewFight = true;
 
         int fights = prefs.getInt(KEY_FIGHTS, 0) + 1;
         int wins   = prefs.getInt(KEY_WINS,    0);
@@ -330,14 +331,16 @@ public class BotService extends AccessibilityService {
             addPoints(30);
         }
 
+        // Resetar apos 3 segundos (antes era 10 - muito longo)
         mainHandler.postDelayed(() -> {
             fightEnded = false;
             doingFatality = false;
-            waitingNewFight = false;
             lastState = null;
             lastActionIndex = -1;
+            motionStartFrames = 0;
+            pausedFrames = 0;
             Log.i(TAG, "Pronto para nova luta.");
-        }, 10000);
+        }, 3000);
     }
 
     private void doFatality() {
