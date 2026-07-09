@@ -62,6 +62,7 @@ public class BotService extends AccessibilityService {
     private int lastActionIndex = -1;
     private GameState lastState = null;
     private int pausedFrames = 0;
+    private int motionStartFrames = 0;
     private int screenWidth = 1, screenHeight = 1;
 
     @Override
@@ -163,14 +164,22 @@ public class BotService extends AccessibilityService {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            // Detecta inicio de luta: HP > 0 nos dois lados E movimento
-            if (!inFight && state.p1Hp > 0 && state.oppHp > 0 && state.motion > 5) {
-                inFight = true;
-                pausedFrames = 0;
-                Log.i(TAG, "Luta iniciada P1=" + state.p1Hp + " opp=" + state.oppHp);
+            Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
+                       " motion=" + state.motion + " flash=" + state.hitFlash);
+
+            // ENTRAR em luta: movimento suficiente por 2 frames seguidos
+            if (!inFight && state.motion > 3) {
+                motionStartFrames++;
+                if (motionStartFrames >= 2) {
+                    inFight = true;
+                    pausedFrames = 0;
+                    Log.i(TAG, "Luta iniciada por movimento. motion=" + state.motion);
+                }
+            } else if (!inFight) {
+                motionStartFrames = 0;
             }
 
-            // SE NAO ESTA EM LUTA, NAO FAZ NADA - so observa
+            // SE NAO ESTA EM LUTA, NAO FAZ NADA
             if (!inFight) {
                 return;
             }
@@ -178,18 +187,22 @@ public class BotService extends AccessibilityService {
             // Detecta pausa: movimento quase zero por varios frames
             if (state.motion < 3) {
                 pausedFrames++;
-                if (pausedFrames > 5) {
-                    return; // pausado, nao toca
+                if (pausedFrames > 10) {
+                    if (pausedFrames > 30) {
+                        Log.i(TAG, "Luta terminada por inatividade.");
+                        onFightEnd(state.oppHp <= 0 && state.p1Hp > 0);
+                    }
+                    return;
                 }
             } else {
                 pausedFrames = 0;
             }
 
-            // Detecta fim de luta
-            if (state.oppHp <= 0) { onFightEnd(true);  return; }
-            if (state.p1Hp  <= 0) { onFightEnd(false); return; }
+            // Detecta fim de luta por HP
+            if (state.oppHp <= 0 && state.p1Hp > 0) { onFightEnd(true);  return; }
+            if (state.p1Hp  <= 0 && state.oppHp > 0) { onFightEnd(false); return; }
 
-            // Recompensa densa: dano causado - dano sofrido + bonus por acerto
+            // Recompensa densa
             double reward = 0;
             if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
