@@ -19,6 +19,7 @@
     <string name="hits_label">Acertos: %1$d</string>
     <string name="combos_label">Combos: %1$d</string>
     <string name="blocks_label">Bloqueios: %1$d</string>
+    <string name="fatalities_label">Fatalities: %1$d</string>
     <string name="reset_qtable">Resetar Aprendizado</string>
     <string name="reset_confirm">Tem certeza? Isso apaga tudo que o bot aprendeu e zera os pontos.</string>
 </resources>
