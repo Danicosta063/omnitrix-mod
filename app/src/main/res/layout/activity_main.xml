@@ -121,6 +121,14 @@
             android:layout_height="wrap_content"
             android:text="@string/blocks_label"
             android:textSize="16sp"
+            android:paddingBottom="8dp" />
+
+        <TextView
+            android:id="@+id/txtFatalities"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/fatalities_label"
+            android:textSize="16sp"
             android:paddingBottom="24dp" />
 
         <Button
