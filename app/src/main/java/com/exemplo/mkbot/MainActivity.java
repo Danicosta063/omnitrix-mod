@@ -5,14 +5,17 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.List;
@@ -20,55 +23,252 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
     private static final String PREFS = "mkbot_prefs";
+    private static final String KEY_PIN = "pin";
+    private static final String KEY_PLAY_MODE = "playMode";
+    private static final String KEY_PLAY_START = "playStart";
+    private static final String KEY_TOTAL_PLAY = "totalPlay";
     private static final String KEY_RUNNING = "running";
-    private static final String KEY_FIGHTS = "fights";
-    private static final String KEY_WINS = "wins";
-    private static final String KEY_LOSSES = "losses";
-    private static final String KEY_POINTS = "points";
-    private static final String KEY_HITS = "hits";
-    private static final String KEY_COMBOS = "combos";
-    private static final String KEY_BLOCKS = "blocks";
-    private static final String KEY_FATALITIES = "fatalities";
-    private static final String KEY_QTABLE = "qtable";
-
     private static final String SERVICE_NAME = "com.exemplo.mkbot/.BotService";
 
-    private Button btnToggle, btnEnableA11y, btnReset;
-    private TextView txtStatus, txtTraining, txtWins, txtLosses, txtWinRate;
-    private TextView txtPoints, txtHits, txtCombos, txtBlocks, txtFatalities;
     private SharedPreferences prefs;
+    private int appState = 0; // 0=login, 1=register, 2=main
+    private Handler handler = new Handler();
+    private Handler timerHandler = new Handler();
+    private Runnable plusHoldRunnable;
+    private Runnable minusHoldRunnable;
+    private Runnable timerRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (prefs.getString(KEY_PIN, null) == null) {
+            showRegister();
+        } else {
+            showLogin();
+        }
+    }
+
+    // ============ TELA DE LOGIN / CADASTRO ============
+
+    private void showLogin() {
+        appState = 0;
+        setContentView(R.layout.activity_login);
+        TextView title = findViewById(R.id.txtLoginTitle);
+        title.setText(R.string.enter_pin);
+        Button btn = findViewById(R.id.btnEnter);
+        btn.setText(R.string.enter);
+        EditText edt = findViewById(R.id.edtPin);
+        edt.setText("");
+        findViewById(R.id.txtLoginError).setVisibility(View.GONE);
+        btn.setOnClickListener(v -> {
+            String input = edt.getText().toString();
+            String pin = prefs.getString(KEY_PIN, "");
+            if (input.equals(pin)) {
+                showMain();
+            } else {
+                TextView err = findViewById(R.id.txtLoginError);
+                err.setText(R.string.wrong_pin);
+                err.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    private void showRegister() {
+        appState = 1;
+        setContentView(R.layout.activity_login);
+        TextView title = findViewById(R.id.txtLoginTitle);
+        title.setText(R.string.define_pin);
+        Button btn = findViewById(R.id.btnEnter);
+        btn.setText(R.string.define);
+        EditText edt = findViewById(R.id.edtPin);
+        edt.setText("");
+        findViewById(R.id.txtLoginError).setVisibility(View.GONE);
+        btn.setOnClickListener(v -> {
+            String input = edt.getText().toString();
+            if (input.length() == 4) {
+                prefs.edit().putString(KEY_PIN, input).apply();
+                showMain();
+            } else {
+                TextView err = findViewById(R.id.txtLoginError);
+                err.setText(R.string.invalid_pin);
+                err.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    // ============ TELA PRINCIPAL ============
+
+    private void showMain() {
+        appState = 2;
         setContentView(R.layout.activity_main);
 
-        prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        Button btnA11y = findViewById(R.id.btnA11y);
+        Button btnActivate = findViewById(R.id.btnActivate);
+        Button btnPlus = findViewById(R.id.btnPlus);
+        Button btnMinus = findViewById(R.id.btnMinus);
 
-        btnToggle = findViewById(R.id.btnToggle);
-        btnEnableA11y = findViewById(R.id.btnEnableA11y);
-        btnReset = findViewById(R.id.btnReset);
-        txtStatus = findViewById(R.id.txtStatus);
-        txtTraining = findViewById(R.id.txtTraining);
-        txtWins = findViewById(R.id.txtWins);
-        txtLosses = findViewById(R.id.txtLosses);
-        txtWinRate = findViewById(R.id.txtWinRate);
-        txtPoints = findViewById(R.id.txtPoints);
-        txtHits = findViewById(R.id.txtHits);
-        txtCombos = findViewById(R.id.txtCombos);
-        txtBlocks = findViewById(R.id.txtBlocks);
-        txtFatalities = findViewById(R.id.txtFatalities);
+        btnA11y.setOnClickListener(v ->
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
 
-        btnToggle.setOnClickListener(v -> onToggle());
-        btnEnableA11y.setOnClickListener(v -> openAccessibilitySettings());
-        btnReset.setOnClickListener(v -> onReset());
+        btnActivate.setOnClickListener(v -> {
+            if (!isAccessibilityEnabled()) {
+                Toast.makeText(this, "Ative a acessibilidade primeiro",
+                        Toast.LENGTH_SHORT).show();
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                return;
+            }
+            boolean running = prefs.getBoolean(KEY_RUNNING, false);
+            prefs.edit().putBoolean(KEY_RUNNING, !running).apply();
+            updateActivateButton();
+        });
+
+        // Botão +: segurar 3s pra JOGAR
+        btnPlus.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        plusHoldRunnable = () -> {
+                            setPlayMode(true);
+                            updatePlayUI(true);
+                            startTimer();
+                        };
+                        handler.postDelayed(plusHoldRunnable, 3000);
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (plusHoldRunnable != null) {
+                            handler.removeCallbacks(plusHoldRunnable);
+                            plusHoldRunnable = null;
+                        }
+                        return true;
+                }
+                return false;
+            }
+        });
+
+        // Botão -: segurar 3s pra PARAR
+        btnMinus.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        minusHoldRunnable = () -> {
+                            setPlayMode(false);
+                            updatePlayUI(false);
+                            stopTimer();
+                        };
+                        handler.postDelayed(minusHoldRunnable, 3000);
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (minusHoldRunnable != null) {
+                            handler.removeCallbacks(minusHoldRunnable);
+                            minusHoldRunnable = null;
+                        }
+                        return true;
+                }
+                return false;
+            }
+        });
+
+        updateActivateButton();
+        updatePlayUI(prefs.getBoolean(KEY_PLAY_MODE, false));
+        updateHours();
+        if (prefs.getBoolean(KEY_PLAY_MODE, false)) startTimer();
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        updateUI();
+    private void setPlayMode(boolean play) {
+        SharedPreferences.Editor ed = prefs.edit();
+        if (play) {
+            ed.putLong(KEY_PLAY_START, System.currentTimeMillis());
+        } else {
+            long start = prefs.getLong(KEY_PLAY_START, 0);
+            if (start > 0) {
+                long elapsed = System.currentTimeMillis() - start;
+                long total = prefs.getLong(KEY_TOTAL_PLAY, 0) + elapsed;
+                ed.putLong(KEY_TOTAL_PLAY, total);
+                ed.putLong(KEY_PLAY_START, 0);
+            }
+        }
+        ed.putBoolean(KEY_PLAY_MODE, play).apply();
     }
+
+    private void updatePlayUI(boolean playing) {
+        if (appState != 2) return;
+        Button btnPlus = findViewById(R.id.btnPlus);
+        Button btnMinus = findViewById(R.id.btnMinus);
+        TextView txtStatus = findViewById(R.id.txtStatus);
+        if (btnPlus == null) return;
+        if (playing) {
+            btnPlus.setBackgroundColor(0xFF4CAF50);
+            btnPlus.setTextColor(0xFFFFFFFF);
+            btnMinus.setBackgroundColor(0xFFCCCCCC);
+            btnMinus.setTextColor(0xFF000000);
+            txtStatus.setText("Bot jogando");
+            txtStatus.setTextColor(0xFF4CAF50);
+        } else {
+            btnPlus.setBackgroundColor(0xFFCCCCCC);
+            btnPlus.setTextColor(0xFF000000);
+            btnMinus.setBackgroundColor(0xFFF44336);
+            btnMinus.setTextColor(0xFFFFFFFF);
+            txtStatus.setText("Bot parado");
+            txtStatus.setTextColor(0xFF888888);
+        }
+    }
+
+    private void updateActivateButton() {
+        if (appState != 2) return;
+        Button btnActivate = findViewById(R.id.btnActivate);
+        if (btnActivate == null) return;
+        boolean running = prefs.getBoolean(KEY_RUNNING, false);
+        btnActivate.setText(running ? R.string.deactivate_bot : R.string.activate_bot);
+    }
+
+    // ============ CONTADOR DE HORAS ============
+
+    private void startTimer() {
+        timerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (prefs.getBoolean(KEY_PLAY_MODE, false)) {
+                    updateHours();
+                    timerHandler.postDelayed(this, 1000);
+                }
+            }
+        };
+        timerHandler.post(timerRunnable);
+    }
+
+    private void stopTimer() {
+        if (timerRunnable != null) {
+            timerHandler.removeCallbacks(timerRunnable);
+            timerRunnable = null;
+        }
+        updateHours();
+    }
+
+    private void updateHours() {
+        if (appState != 2) return;
+        TextView txtHours = findViewById(R.id.txtHours);
+        if (txtHours == null) return;
+        long total = prefs.getLong(KEY_TOTAL_PLAY, 0);
+        long current = 0;
+        if (prefs.getBoolean(KEY_PLAY_MODE, false)) {
+            long start = prefs.getLong(KEY_PLAY_START, 0);
+            if (start > 0) current = System.currentTimeMillis() - start;
+        }
+        long ms = total + current;
+        long sec = ms / 1000;
+        long h = sec / 3600;
+        long m = (sec % 3600) / 60;
+        long s = sec % 60;
+        txtHours.setText("Horas jogadas: " +
+                String.format("%02d:%02d:%02d", h, m, s));
+    }
+
+    // ============ ACESSIBILIDADE ============
 
     private boolean isAccessibilityEnabled() {
         AccessibilityManager am =
@@ -83,79 +283,12 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    private void onToggle() {
-        if (!isAccessibilityEnabled()) {
-            Toast.makeText(this, "Ative a acessibilidade primeiro.",
-                    Toast.LENGTH_LONG).show();
-            openAccessibilitySettings();
-            return;
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (appState == 2) {
+            updateActivateButton();
+            updateHours();
         }
-        boolean running = prefs.getBoolean(KEY_RUNNING, false);
-        prefs.edit().putBoolean(KEY_RUNNING, !running).apply();
-        updateUI();
-    }
-
-    private void openAccessibilitySettings() {
-        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-    }
-
-    private void onReset() {
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.reset_qtable)
-                .setMessage(R.string.reset_confirm)
-                .setPositiveButton("Sim", (d, w) -> {
-                    SharedPreferences.Editor ed = prefs.edit();
-                    ed.remove(KEY_QTABLE);
-                    ed.putInt(KEY_FIGHTS, 0);
-                    ed.putInt(KEY_WINS, 0);
-                    ed.putInt(KEY_LOSSES, 0);
-                    ed.putInt(KEY_POINTS, 0);
-                    ed.putInt(KEY_HITS, 0);
-                    ed.putInt(KEY_COMBOS, 0);
-                    ed.putInt(KEY_BLOCKS, 0);
-                    ed.putInt(KEY_FATALITIES, 0);
-                    ed.apply();
-                    updateUI();
-                    Toast.makeText(this, "Aprendizado resetado.",
-                            Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Não", null)
-                .show();
-    }
-
-    private void updateUI() {
-        boolean a11y = isAccessibilityEnabled();
-        boolean running = prefs.getBoolean(KEY_RUNNING, false);
-
-        if (!a11y) {
-            btnToggle.setText(R.string.bot_off);
-            txtStatus.setText("Acessibilidade desativada");
-        } else if (running) {
-            btnToggle.setText(R.string.bot_on);
-            txtStatus.setText("Bot rodando");
-        } else {
-            btnToggle.setText(R.string.bot_off);
-            txtStatus.setText("Bot parado (a11y ativa)");
-        }
-
-        int fights = prefs.getInt(KEY_FIGHTS, 0);
-        int wins = prefs.getInt(KEY_WINS, 0);
-        int losses = prefs.getInt(KEY_LOSSES, 0);
-        int points = prefs.getInt(KEY_POINTS, 0);
-        int hits = prefs.getInt(KEY_HITS, 0);
-        int combos = prefs.getInt(KEY_COMBOS, 0);
-        int blocks = prefs.getInt(KEY_BLOCKS, 0);
-        int fatalities = prefs.getInt(KEY_FATALITIES, 0);
-        float winrate = (fights > 0) ? (100f * wins / fights) : 0f;
-
-        txtTraining.setText(getString(R.string.training_label, fights));
-        txtWins.setText(getString(R.string.wins_label, wins));
-        txtLosses.setText(getString(R.string.losses_label, losses));
-        txtWinRate.setText(getString(R.string.winrate_label, winrate));
-        txtPoints.setText(getString(R.string.points_label, points));
-        txtHits.setText(getString(R.string.hits_label, hits));
-        txtCombos.setText(getString(R.string.combos_label, combos));
-        txtBlocks.setText(getString(R.string.blocks_label, blocks));
-        txtFatalities.setText(getString(R.string.fatalities_label, fatalities));
     }
 }
