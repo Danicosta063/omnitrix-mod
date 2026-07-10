@@ -8,10 +8,8 @@ import android.accessibilityservice.GestureDescription;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
-import android.graphics.PixelFormat;
 import android.hardware.HardwareBuffer;
 import android.media.AudioManager;
 import android.os.Build;
@@ -19,14 +17,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Display;
-import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.View;
-import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.FrameLayout;
-import android.widget.TextView;
 
 import com.exemplo.mkbot.brain.QLearningAgent;
 import com.exemplo.mkbot.vision.GameDetector;
@@ -69,11 +61,6 @@ public class BotService extends AccessibilityService {
     private QLearningAgent brain;
     private GameDetector detector;
 
-    // Overlay bloqueante (trava a tela)
-    private WindowManager windowManager;
-    private View lockOverlay;
-    private boolean lockShown = false;
-
     private boolean volUpHolding = false;
     private boolean volDownHolding = false;
     private Runnable volUpHoldRunnable;
@@ -108,66 +95,6 @@ public class BotService extends AccessibilityService {
         Log.i(TAG, "BotService conectado.");
     }
 
-    // ============ OVERLAY BLOQUEANTE ============
-
-    // Mostra overlay que cobre a tela e bloqueia toques
-    private void showLockOverlay() {
-        if (lockShown) return;
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        if (windowManager == null) return;
-
-        // Layout com fundo preto semi-transparente + texto
-        FrameLayout layout = new FrameLayout(this);
-        layout.setBackgroundColor(0xCC000000); // preto 80% opaco
-
-        TextView text = new TextView(this);
-        text.setText("🔒 BOT JOGANDO\n\nSegure Volume− por 3s\npara parar");
-        text.setTextColor(Color.WHITE);
-        text.setTextSize(20);
-        text.setGravity(Gravity.CENTER);
-        FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT);
-        textParams.gravity = Gravity.CENTER;
-        layout.addView(text, textParams);
-
-        int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-                : WindowManager.LayoutParams.TYPE_SYSTEM_ALERT;
-
-        // SEM FLAG_NOT_FOCUSABLE = bloqueia toques (nao deixa passar pra baixo)
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                overlayType,
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT);
-        params.gravity = Gravity.CENTER;
-
-        try {
-            windowManager.addView(layout, params);
-            lockOverlay = layout;
-            lockShown = true;
-            Log.i(TAG, "Overlay bloqueante ativado");
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao mostrar overlay", e);
-        }
-    }
-
-    // Esconde overlay (libera a tela)
-    private void hideLockOverlay() {
-        if (!lockShown || windowManager == null) return;
-        try {
-            windowManager.removeView(lockOverlay);
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao esconder overlay", e);
-        }
-        lockOverlay = null;
-        lockShown = false;
-        Log.i(TAG, "Overlay bloqueante desativado");
-    }
-
     // ============ BOTOES DE VOLUME ============
 
     @Override
@@ -181,8 +108,7 @@ public class BotService extends AccessibilityService {
                 volUpHoldRunnable = () -> {
                     volUpHolding = true;
                     setPlayMode(true);
-                    showLockOverlay();
-                    Log.i(TAG, "Volume+ segurado 3s - BOT JOGANDO + TELA BLOQUEADA");
+                    Log.i(TAG, "Volume+ segurado 3s - BOT JOGANDO");
                 };
                 mainHandler.postDelayed(volUpHoldRunnable, 3000);
                 return true;
@@ -205,8 +131,7 @@ public class BotService extends AccessibilityService {
                 volDownHoldRunnable = () -> {
                     volDownHolding = true;
                     setPlayMode(false);
-                    hideLockOverlay();
-                    Log.i(TAG, "Volume- segurado 3s - BOT PARADO + TELA LIBERADA");
+                    Log.i(TAG, "Volume- segurado 3s - BOT PARADO");
                 };
                 mainHandler.postDelayed(volDownHoldRunnable, 3000);
                 return true;
@@ -259,7 +184,7 @@ public class BotService extends AccessibilityService {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = event.getPackageName();
         if (EMULATOR_PKG.equals(pkg)) {
-            // CORRECAO: so inicia o loop se o usuario ativou o bot (KEY_RUNNING=true)
+            // CORRECAO: so inicia o loop se o usuario ativou o bot
             if (prefs.getBoolean(KEY_RUNNING, false)) {
                 startLoop();
             }
@@ -294,7 +219,7 @@ public class BotService extends AccessibilityService {
         public void run() {
             if (!loopRunning) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
-            // Se o usuario desativou o bot, para o loop
+            // Se desativou o bot, para o loop
             if (!prefs.getBoolean(KEY_RUNNING, false)) {
                 stopLoop();
                 return;
