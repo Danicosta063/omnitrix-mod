@@ -37,7 +37,6 @@ public class BotService extends AccessibilityService {
     private static final String KEY_PLAY_START = "playStart";
     private static final String KEY_TOTAL_PLAY = "totalPlay";
     private static final String KEY_QTABLE = "qtable";
-    private static final String KEY_FIGHTS = "fights";
 
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
@@ -84,15 +83,17 @@ public class BotService extends AccessibilityService {
         brain = new QLearningAgent();
         detector = new GameDetector();
         loadQTable();
-        int fights = prefs.getInt(KEY_FIGHTS, 0);
-        brain.setFightsTrained(fights);
+        // Restaura epsilon baseado no tempo total ja jogado
+        long totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0);
+        brain.restoreEpsilonByTime(totalPlay);
 
         AccessibilityServiceInfo info = getServiceInfo();
         if (info != null) {
             info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
             setServiceInfo(info);
         }
-        Log.i(TAG, "BotService conectado.");
+        Log.i(TAG, "BotService conectado. Tempo total jogado: " +
+              (totalPlay / 60000) + " min");
     }
 
     // ============ BOTOES DE VOLUME ============
@@ -174,7 +175,6 @@ public class BotService extends AccessibilityService {
             }
         }
         ed.putBoolean(KEY_PLAY_MODE, play).apply();
-        // Salva backup no arquivo
         BackupManager.save(this, prefs);
     }
 
@@ -267,6 +267,15 @@ public class BotService extends AccessibilityService {
         try {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
+
+            // Calcula tempo total jogado (atual + acumulado)
+            long currentSession = 0;
+            long start = prefs.getLong(KEY_PLAY_START, 0);
+            if (start > 0) currentSession = System.currentTimeMillis() - start;
+            long totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0) + currentSession;
+
+            // Decai epsilon por tempo (a cada 5 min)
+            brain.decayEpsilonByTime(totalPlay);
 
             if (state.hitFlash) {
                 consecutiveHits++;
