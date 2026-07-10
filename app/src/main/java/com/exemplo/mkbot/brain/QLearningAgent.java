@@ -5,37 +5,31 @@ import com.exemplo.mkbot.vision.GameDetector.GameState;
 import java.util.Random;
 
 /**
- * Q-Learning agent com aprendizado melhorado.
+ * Q-Learning agent com epsilon decay por TEMPO (nao por luta).
+ * Isso permite aprender em luta infinita sem precisar terminar.
  *
  * Estado: (faixa HP P1, faixa HP opp, faixa movimento, ultima acao)
- *   - HP P1: 5 faixas
- *   - HP opp: 5 faixas
- *   - Movimento: 3 faixas
- *   - Ultima acao: 12 valores
- *   - Total: 5 x 5 x 3 x 12 = 900 estados
- *
- * Melhorias:
- *   - Epsilon decay: comeca em 0.3 e decai pra 0.05 conforme treina
- *   - Penalidade por repetir acao (evita spam de um botao)
- *   - Estado inclui ultima acao (aprende sequencias/combos)
+ *   5 x 5 x 3 x 12 = 900 estados
  */
 public class QLearningAgent {
 
     private static final int N_HP_BINS = 5;
     private static final int N_MOTION_BINS = 3;
     private static final int N_ACTIONS = 12;
-    private static final int N_STATES = N_HP_BINS * N_HP_BINS * N_MOTION_BINS * N_ACTIONS; // 900
+    private static final int N_STATES = N_HP_BINS * N_HP_BINS * N_MOTION_BINS * N_ACTIONS;
 
     private static final double ALPHA = 0.15;
     private static final double GAMMA = 0.95;
     private static final double EPSILON_START = 0.3;
     private static final double EPSILON_MIN = 0.05;
-    private static final double EPSILON_DECAY = 0.995;
+    // Decay por tempo: a cada 5 minutos (300000ms), multiplica por 0.95
+    private static final long DECAY_INTERVAL_MS = 300000;
+    private static final double DECAY_FACTOR = 0.95;
 
     private final float[][] qTable;
     private final Random rng = new Random();
     private double currentEpsilon = EPSILON_START;
-    private int fightsTrained = 0;
+    private long lastDecayTime = 0;
     private int lastActionChosen = -1;
 
     public QLearningAgent() {
@@ -74,7 +68,6 @@ public class QLearningAgent {
 
     public int chooseAction(int stateIdx) {
         if (stateIdx < 0 || stateIdx >= N_STATES) return 0;
-
         if (rng.nextDouble() < currentEpsilon) {
             lastActionChosen = rng.nextInt(N_ACTIONS);
             return lastActionChosen;
@@ -86,26 +79,50 @@ public class QLearningAgent {
     public void update(int stateIdx, int actionIdx, double reward, int nextStateIdx) {
         if (stateIdx < 0 || stateIdx >= N_STATES) return;
         if (actionIdx < 0 || actionIdx >= N_ACTIONS) return;
-
         float[] row = qTable[stateIdx];
         float maxNext = (nextStateIdx >= 0 && nextStateIdx < N_STATES)
                 ? maxOf(qTable[nextStateIdx]) : 0f;
-
         float current = row[actionIdx];
         float target = (float) (reward + GAMMA * maxNext);
         row[actionIdx] = (float) (current + ALPHA * (target - current));
     }
 
-    public void onFightEnd() {
-        fightsTrained++;
-        // Epsilon decay: a cada luta, reduz exploracao
-        currentEpsilon *= EPSILON_DECAY;
-        if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
-        System.out.println("Epsilon atual: " + currentEpsilon + " apos " + fightsTrained + " lutas");
+    /**
+     * Decai o epsilon baseado no tempo jogado.
+     * Chamado pelo BotService a cada frame com o tempo total jogado.
+     */
+    public void decayEpsilonByTime(long totalPlayMs) {
+        if (lastDecayTime == 0) {
+            lastDecayTime = totalPlayMs;
+            return;
+        }
+        // Quantos intervalos de 5 min se passaram desde o ultimo decay
+        long elapsed = totalPlayMs - lastDecayTime;
+        if (elapsed >= DECAY_INTERVAL_MS) {
+            int intervals = (int) (elapsed / DECAY_INTERVAL_MS);
+            for (int i = 0; i < intervals; i++) {
+                currentEpsilon *= DECAY_FACTOR;
+            }
+            if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
+            lastDecayTime = totalPlayMs;
+            System.out.println("Epsilon decaiu pra " + currentEpsilon +
+                    " apos " + (totalPlayMs / 60000) + " min jogados");
+        }
     }
 
-    public int getFightsTrained() {
-        return fightsTrained;
+    /**
+     * Restaura epsilon baseado no tempo total ja jogado (ao reabrir o app).
+     */
+    public void restoreEpsilonByTime(long totalPlayMs) {
+        currentEpsilon = EPSILON_START;
+        long intervals = totalPlayMs / DECAY_INTERVAL_MS;
+        for (long i = 0; i < intervals; i++) {
+            currentEpsilon *= DECAY_FACTOR;
+        }
+        if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
+        lastDecayTime = totalPlayMs;
+        System.out.println("Epsilon restaurado pra " + currentEpsilon +
+                " baseado em " + (totalPlayMs / 60000) + " min totais");
     }
 
     public double getCurrentEpsilon() {
@@ -123,16 +140,6 @@ public class QLearningAgent {
                 qTable[i][j] = loaded[i][j];
             }
         }
-    }
-
-    public void setFightsTrained(int count) {
-        fightsTrained = count;
-        // Recalcula epsilon baseado no numero de lutas
-        currentEpsilon = EPSILON_START;
-        for (int i = 0; i < count; i++) {
-            currentEpsilon *= EPSILON_DECAY;
-        }
-        if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
     }
 
     public void resetLastAction() {
