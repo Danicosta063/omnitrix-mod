@@ -7,19 +7,17 @@
         para jogar automaticamente. Necessário para acessibilidade para poder
         ler a tela e tocar nela.
     </string>
-    <string name="bot_off">Bot Desligado</string>
-    <string name="bot_on">Bot Ligado</string>
-    <string name="enable_accessibility">Ativar Acessibilidade</string>
-    <string name="status_label">Status do Bot</string>
-    <string name="training_label">Lutas treinadas: %1$d</string>
-    <string name="wins_label">Vitórias: %1$d</string>
-    <string name="losses_label">Derrotas: %1$d</string>
-    <string name="winrate_label">Taxa de vitória: %1$.1f%%</string>
-    <string name="points_label">Pontos: %1$d</string>
-    <string name="hits_label">Acertos: %1$d</string>
-    <string name="combos_label">Combos: %1$d</string>
-    <string name="blocks_label">Bloqueios: %1$d</string>
-    <string name="fatalities_label">Fatalities: %1$d</string>
-    <string name="reset_qtable">Resetar Aprendizado</string>
-    <string name="reset_confirm">Tem certeza? Isso apaga tudo que o bot aprendeu e zera os pontos.</string>
+    <string name="enable_accessibility">Permitir Acessibilidade</string>
+    <string name="activate_bot">Ativar Bot</string>
+    <string name="deactivate_bot">Desativar Bot</string>
+    <string name="bot_inactive">Bot Desativado</string>
+    <string name="plus">+</string>
+    <string name="minus">−</string>
+    <string name="enter_pin">Digite seu PIN</string>
+    <string name="define_pin">Defina seu PIN (4 dígitos)</string>
+    <string name="enter">Entrar</string>
+    <string name="define">Definir</string>
+    <string name="wrong_pin">PIN incorreto</string>
+    <string name="invalid_pin">PIN deve ter 4 dígitos</string>
+    <string name="hold_hint">Segure + por 3s para jogar · Segure − por 3s para parar</string>
 </resources>
