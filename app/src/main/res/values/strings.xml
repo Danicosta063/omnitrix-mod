@@ -11,13 +11,11 @@
     <string name="activate_bot">Ativar Bot</string>
     <string name="deactivate_bot">Desativar Bot</string>
     <string name="bot_inactive">Bot Desativado</string>
-    <string name="plus">+</string>
-    <string name="minus">−</string>
     <string name="enter_pin">Digite seu PIN</string>
     <string name="define_pin">Defina seu PIN (4 dígitos)</string>
     <string name="enter">Entrar</string>
     <string name="define">Definir</string>
     <string name="wrong_pin">PIN incorreto</string>
     <string name="invalid_pin">PIN deve ter 4 dígitos</string>
-    <string name="hold_hint">Segure + por 3s para jogar · Segure − por 3s para parar</string>
+    <string name="hold_hint">Segure Volume+ por 3s para jogar\nSegure Volume- por 3s para parar\nToque rápido muda o volume normal</string>
 </resources>
