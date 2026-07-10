@@ -67,6 +67,7 @@ public class BotService extends AccessibilityService {
     private boolean fightEnded = false;
     private boolean doingFatality = false;
     private int lastActionIndex = -1;
+    private int repeatActionCount = 0;
     private GameState lastState = null;
     private int pausedFrames = 0;
     private int motionStartFrames = 0;
@@ -85,7 +86,9 @@ public class BotService extends AccessibilityService {
         brain = new QLearningAgent();
         detector = new GameDetector();
         loadQTable();
-        Log.i(TAG, "BotService conectado.");
+        int fights = prefs.getInt(KEY_FIGHTS, 0);
+        brain.setFightsTrained(fights);
+        Log.i(TAG, "BotService conectado. Lutas anteriores: " + fights);
     }
 
     @Override
@@ -124,6 +127,7 @@ public class BotService extends AccessibilityService {
         doingFatality = false;
         lastState = null;
         lastActionIndex = -1;
+        repeatActionCount = 0;
         Log.i(TAG, "Loop parado.");
     }
 
@@ -176,9 +180,6 @@ public class BotService extends AccessibilityService {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            Log.i(TAG, "motion=" + state.motion + " inFight=" + inFight + " fightEnded=" + fightEnded);
-
-            // ENTRAR em luta: motion > 15 por 3 frames (voltou ao que funcionava)
             if (!inFight && !fightEnded && state.motion > 15) {
                 motionStartFrames++;
                 if (motionStartFrames >= 3) {
@@ -187,6 +188,8 @@ public class BotService extends AccessibilityService {
                     doingFatality = false;
                     pausedFrames = 0;
                     consecutiveHits = 0;
+                    repeatActionCount = 0;
+                    brain.resetLastAction();
                     Log.i(TAG, "Luta iniciada. motion=" + state.motion);
                 }
             } else if (!inFight) {
@@ -200,7 +203,6 @@ public class BotService extends AccessibilityService {
             p1HpAtEnd = state.p1Hp;
             oppHpAtEnd = state.oppHp;
 
-            // Detecta pausa/fim
             if (state.motion < 5) {
                 pausedFrames++;
                 if (pausedFrames > 40 && !fightEnded) {
@@ -219,7 +221,6 @@ public class BotService extends AccessibilityService {
                 return;
             }
 
-            // Conta acertos
             if (state.hitFlash) {
                 int hits = prefs.getInt(KEY_HITS, 0) + 1;
                 prefs.edit().putInt(KEY_HITS, hits).apply();
@@ -234,7 +235,6 @@ public class BotService extends AccessibilityService {
                 consecutiveHits = 0;
             }
 
-            // Recompensa
             double reward = 0;
             if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
@@ -243,11 +243,28 @@ public class BotService extends AccessibilityService {
                 if (state.hitFlash) reward += 2.0;
                 if (dmgDealt > 0) addPoints(dmgDealt);
                 if (dmgTaken > 0) addPoints(-dmgTaken);
+
                 if (lastActionIndex == 8 && dmgTaken == 0 && state.motion > 5) {
                     int blocks = prefs.getInt(KEY_BLOCKS, 0) + 1;
                     prefs.edit().putInt(KEY_BLOCKS, blocks).apply();
                     addPoints(3);
                 }
+
+                // PENALIDADE POR REPETIR A MESMA ACAO 3+ VEZES
+                if (lastActionIndex == actionIdxAnterior()) {
+                    repeatActionCount++;
+                    if (repeatActionCount >= 3) {
+                        reward -= 1.0; // penalidade por spam
+                    }
+                } else {
+                    repeatActionCount = 0;
+                }
+
+                // BONUS POR VARIAR (acao diferente da anterior)
+                if (lastActionIndex != actionIdxAnterior() && actionIdxAnterior() >= 0) {
+                    reward += 0.3;
+                }
+
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -255,8 +272,9 @@ public class BotService extends AccessibilityService {
             int actionIdx = brain.chooseAction(stateIdx);
 
             if (lastState != null && lastActionIndex >= 0) {
-                int lastIdx = brain.discretizeState(lastState);
-                brain.update(lastIdx, lastActionIndex, reward, stateIdx);
+                int lastIdx = brain.discretizeState(lastState, lastActionIndex);
+                int nextIdx = brain.discretizeState(state, actionIdx);
+                brain.update(lastIdx, lastActionIndex, reward, nextIdx);
             }
 
             final int act = actionIdx;
@@ -270,6 +288,10 @@ public class BotService extends AccessibilityService {
         } finally {
             frame.recycle();
         }
+    }
+
+    private int actionIdxAnterior() {
+        return lastActionIndex;
     }
 
     private boolean decideWinner() {
@@ -302,11 +324,13 @@ public class BotService extends AccessibilityService {
 
         double terminal = win ? 50.0 : -100.0;
         if (lastState != null && lastActionIndex >= 0) {
-            int idx = brain.discretizeState(lastState);
+            int idx = brain.discretizeState(lastState, lastActionIndex);
             brain.update(idx, lastActionIndex, terminal, idx);
         }
+        brain.onFightEnd(); // decai epsilon
         saveQTable();
-        Log.i(TAG, "Luta fim win=" + win + " total=" + fights);
+        Log.i(TAG, "Luta fim win=" + win + " total=" + fights +
+              " epsilon=" + String.format("%.3f", brain.getCurrentEpsilon()));
 
         if (win) {
             doingFatality = true;
@@ -316,14 +340,15 @@ public class BotService extends AccessibilityService {
             addPoints(30);
         }
 
-        // Reset em 3 segundos
         mainHandler.postDelayed(() -> {
             fightEnded = false;
             doingFatality = false;
             lastState = null;
             lastActionIndex = -1;
+            repeatActionCount = 0;
             motionStartFrames = 0;
             pausedFrames = 0;
+            brain.resetLastAction();
             Log.i(TAG, "Pronto para nova luta.");
         }, 3000);
     }
