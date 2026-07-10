@@ -176,13 +176,10 @@ public class BotService extends AccessibilityService {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
-                       " motion=" + state.motion + " flash=" + state.hitFlash +
-                       " inFight=" + inFight + " fightEnded=" + fightEnded);
+            Log.i(TAG, "motion=" + state.motion + " inFight=" + inFight + " fightEnded=" + fightEnded);
 
-            // ENTRAR em luta: motion ALTO por 3 frames seguidos
-            // Só entra se não tiver fightEnded (proteção contra contar 2x)
-            if (!inFight && !fightEnded && state.motion > 20) {
+            // ENTRAR em luta: motion > 15 por 3 frames (voltou ao que funcionava)
+            if (!inFight && !fightEnded && state.motion > 15) {
                 motionStartFrames++;
                 if (motionStartFrames >= 3) {
                     inFight = true;
@@ -196,7 +193,6 @@ public class BotService extends AccessibilityService {
                 motionStartFrames = 0;
             }
 
-            // SE NAO ESTA EM LUTA, NAO FAZ NADA
             if (!inFight) {
                 return;
             }
@@ -204,16 +200,14 @@ public class BotService extends AccessibilityService {
             p1HpAtEnd = state.p1Hp;
             oppHpAtEnd = state.oppHp;
 
-            // Detecta pausa/fim: movimento baixo por varios frames
+            // Detecta pausa/fim
             if (state.motion < 5) {
                 pausedFrames++;
-                // 40 frames parado = ~4.8 segundos = luta acabou
                 if (pausedFrames > 40 && !fightEnded) {
                     boolean win = decideWinner();
                     onFightEnd(win);
                     return;
                 }
-                // 15 frames parado = ~1.8 segundos = pausado
                 if (pausedFrames > 15) {
                     return;
                 }
@@ -225,6 +219,7 @@ public class BotService extends AccessibilityService {
                 return;
             }
 
+            // Conta acertos
             if (state.hitFlash) {
                 int hits = prefs.getInt(KEY_HITS, 0) + 1;
                 prefs.edit().putInt(KEY_HITS, hits).apply();
@@ -239,22 +234,20 @@ public class BotService extends AccessibilityService {
                 consecutiveHits = 0;
             }
 
+            // Recompensa
             double reward = 0;
             if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-
                 if (dmgDealt > 0) addPoints(dmgDealt);
                 if (dmgTaken > 0) addPoints(-dmgTaken);
-
                 if (lastActionIndex == 8 && dmgTaken == 0 && state.motion > 5) {
                     int blocks = prefs.getInt(KEY_BLOCKS, 0) + 1;
                     prefs.edit().putInt(KEY_BLOCKS, blocks).apply();
                     addPoints(3);
                 }
-
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -280,11 +273,9 @@ public class BotService extends AccessibilityService {
     }
 
     private boolean decideWinner() {
-        Log.i(TAG, "Decidindo vencedor: P1=" + p1HpAtEnd + " opp=" + oppHpAtEnd);
         if (oppHpAtEnd <= 0 && p1HpAtEnd > 0) return true;
         if (p1HpAtEnd <= 0 && oppHpAtEnd > 0) return false;
         if (p1HpAtEnd > oppHpAtEnd) return true;
-        if (oppHpAtEnd > p1HpAtEnd) return false;
         return false;
     }
 
@@ -301,13 +292,8 @@ public class BotService extends AccessibilityService {
         int fights = prefs.getInt(KEY_FIGHTS, 0) + 1;
         int wins   = prefs.getInt(KEY_WINS,    0);
         int losses = prefs.getInt(KEY_LOSSES, 0);
-        if (win) {
-            wins++;
-            addPoints(100);
-        } else {
-            losses++;
-            addPoints(-50);
-        }
+        if (win) { wins++; addPoints(100); }
+        else { losses++; addPoints(-50); }
         prefs.edit()
             .putInt(KEY_FIGHTS, fights)
             .putInt(KEY_WINS, wins)
@@ -320,8 +306,7 @@ public class BotService extends AccessibilityService {
             brain.update(idx, lastActionIndex, terminal, idx);
         }
         saveQTable();
-        Log.i(TAG, "Luta fim win=" + win + " total=" + fights +
-              " V=" + wins + " D=" + losses + " pontos=" + prefs.getInt(KEY_POINTS, 0));
+        Log.i(TAG, "Luta fim win=" + win + " total=" + fights);
 
         if (win) {
             doingFatality = true;
@@ -331,7 +316,7 @@ public class BotService extends AccessibilityService {
             addPoints(30);
         }
 
-        // Resetar apos 3 segundos (antes era 10 - muito longo)
+        // Reset em 3 segundos
         mainHandler.postDelayed(() -> {
             fightEnded = false;
             doingFatality = false;
@@ -344,7 +329,7 @@ public class BotService extends AccessibilityService {
     }
 
     private void doFatality() {
-        Log.i(TAG, "Tentando fatality: Head Smash (Fwd, Fwd, Circle)");
+        Log.i(TAG, "Tentando fatality");
         tap(BTN_FWD_X, BTN_FWD_Y, 70);
         mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 70), 300);
         mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 600);
@@ -393,11 +378,9 @@ public class BotService extends AccessibilityService {
         if (json == null) return;
         try {
             float[][] loaded = gson.fromJson(json, float[][].class);
-            if (loaded != null) {
-                brain.setQTable(loaded);
-            }
+            if (loaded != null) brain.setQTable(loaded);
         } catch (Exception e) {
-            Log.w(TAG, "Q-table invalida, recomecando do zero.");
+            Log.w(TAG, "Q-table invalida.");
         }
     }
 }
