@@ -61,7 +61,6 @@ public class BotService extends AccessibilityService {
     private QLearningAgent brain;
     private GameDetector detector;
 
-    // Volume button hold tracking
     private boolean volUpHolding = false;
     private boolean volDownHolding = false;
     private Runnable volUpHoldRunnable;
@@ -88,7 +87,6 @@ public class BotService extends AccessibilityService {
         int fights = prefs.getInt(KEY_FIGHTS, 0);
         brain.setFightsTrained(fights);
 
-        // Ativa captura de eventos de tecla (botoes de volume)
         AccessibilityServiceInfo info = getServiceInfo();
         if (info != null) {
             info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
@@ -113,7 +111,7 @@ public class BotService extends AccessibilityService {
                     Log.i(TAG, "Volume+ segurado 3s - BOT JOGANDO");
                 };
                 mainHandler.postDelayed(volUpHoldRunnable, 3000);
-                return true; // Consome - bloqueia mudanca de volume
+                return true;
             } else if (action == KeyEvent.ACTION_UP) {
                 if (volUpHoldRunnable != null) {
                     mainHandler.removeCallbacks(volUpHoldRunnable);
@@ -121,9 +119,8 @@ public class BotService extends AccessibilityService {
                 }
                 if (volUpHolding) {
                     volUpHolding = false;
-                    return true; // Consome UP (ja triggerou)
+                    return true;
                 } else {
-                    // Toque rapido - mudar volume normal
                     adjustVolume(true);
                     return true;
                 }
@@ -155,7 +152,6 @@ public class BotService extends AccessibilityService {
         return false;
     }
 
-    // Muda o volume manualmente (toque rapido)
     private void adjustVolume(boolean up) {
         AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
         if (am == null) return;
@@ -164,7 +160,6 @@ public class BotService extends AccessibilityService {
                 AudioManager.FLAG_SHOW_UI);
     }
 
-    // Ativa/desativa o modo jogo e rastreia tempo
     private void setPlayMode(boolean play) {
         SharedPreferences.Editor ed = prefs.edit();
         if (play) {
@@ -179,6 +174,8 @@ public class BotService extends AccessibilityService {
             }
         }
         ed.putBoolean(KEY_PLAY_MODE, play).apply();
+        // Salva backup no arquivo
+        BackupManager.save(this, prefs);
     }
 
     // ============ EVENTOS DE ACESSIBILIDADE ============
@@ -199,12 +196,11 @@ public class BotService extends AccessibilityService {
         stopLoop();
     }
 
-    // ============ LOOP DE CAPTURA ============
+    // ============ LOOP ============
 
     private void startLoop() {
         if (loopRunning) return;
         loopRunning = true;
-        Log.i(TAG, "Loop iniciado.");
         mainHandler.post(captureRunnable);
     }
 
@@ -214,7 +210,6 @@ public class BotService extends AccessibilityService {
         lastState = null;
         lastActionIndex = -1;
         repeatActionCount = 0;
-        Log.i(TAG, "Loop parado.");
     }
 
     private final Runnable captureRunnable = new Runnable() {
@@ -262,8 +257,6 @@ public class BotService extends AccessibilityService {
 
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
-
-        // So toca se o usuario segurou Volume+ por 3s
         if (!prefs.getBoolean(KEY_PLAY_MODE, false)) {
             frame.recycle();
             return;
@@ -287,12 +280,10 @@ public class BotService extends AccessibilityService {
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-
-                if (lastActionIndex == actionIdxAnterior()) {
+                if (lastActionIndex == lastActionIndex) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
                 }
-
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -316,17 +307,16 @@ public class BotService extends AccessibilityService {
             lastActionIndex = actionIdx;
 
             saveCounter++;
-            if (saveCounter % 100 == 0) saveQTable();
+            if (saveCounter % 100 == 0) {
+                saveQTable();
+                BackupManager.save(this, prefs);
+            }
 
         } catch (Exception e) {
             Log.e(TAG, "Erro em processFrame", e);
         } finally {
             frame.recycle();
         }
-    }
-
-    private int actionIdxAnterior() {
-        return lastActionIndex;
     }
 
     // ============ TOQUES ============
