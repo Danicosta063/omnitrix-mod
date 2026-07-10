@@ -5,55 +5,41 @@ import com.exemplo.mkbot.vision.GameDetector.GameState;
 import java.util.Random;
 
 /**
- * Q-Learning agent com estado rico.
+ * Q-Learning agent com aprendizado melhorado.
  *
- * Estado: (faixa HP P1, faixa HP opp, faixa movimento)
- *   - HP P1: 5 faixas (0-20, 20-40, 40-60, 60-80, 80-100)
+ * Estado: (faixa HP P1, faixa HP opp, faixa movimento, ultima acao)
+ *   - HP P1: 5 faixas
  *   - HP opp: 5 faixas
- *   - Movimento: 3 faixas (parado, pouco, muito)
- *   - Total: 5 x 5 x 3 = 75 estados
+ *   - Movimento: 3 faixas
+ *   - Ultima acao: 12 valores
+ *   - Total: 5 x 5 x 3 x 12 = 900 estados
  *
- * Acoes (12):
- *   0  Attack 1 (Quadrado)
- *   1  Attack 2 (Triangulo)
- *   2  Attack 3 (X/Cross)
- *   3  Attack 4 (Circulo)
- *   4  Recuar (Esquerda)
- *   5  Avancar (Direita)
- *   6  Pular (Cima)
- *   7  Agachar (Baixo)
- *   8  Block (R2)
- *   9  Throw (R1)
- *   10 Idle
- *   11 Idle2
- *
- * Q-table: matriz [75][12] de floats.
- * Inicializada com valores aleatorios pequenos (nao zeros) pra
- * o bot comecar testando botoes diferentes.
- * Politica: epsilon-greedy.
+ * Melhorias:
+ *   - Epsilon decay: comeca em 0.3 e decai pra 0.05 conforme treina
+ *   - Penalidade por repetir acao (evita spam de um botao)
+ *   - Estado inclui ultima acao (aprende sequencias/combos)
  */
 public class QLearningAgent {
 
     private static final int N_HP_BINS = 5;
     private static final int N_MOTION_BINS = 3;
-    private static final int N_STATES = N_HP_BINS * N_HP_BINS * N_MOTION_BINS; // 75
     private static final int N_ACTIONS = 12;
+    private static final int N_STATES = N_HP_BINS * N_HP_BINS * N_MOTION_BINS * N_ACTIONS; // 900
 
-    // Hiperparametros do Q-learning
-    private static final double ALPHA = 0.2;      // taxa de aprendizado
-    private static final double GAMMA = 0.9;      // fator de desconto
-    private static final double EPSILON = 0.15;   // exploracao
-    private static final double EPSILON_MIN = 0.02;
+    private static final double ALPHA = 0.15;
+    private static final double GAMMA = 0.95;
+    private static final double EPSILON_START = 0.3;
+    private static final double EPSILON_MIN = 0.05;
+    private static final double EPSILON_DECAY = 0.995;
 
     private final float[][] qTable;
     private final Random rng = new Random();
+    private double currentEpsilon = EPSILON_START;
     private int fightsTrained = 0;
+    private int lastActionChosen = -1;
 
     public QLearningAgent() {
         qTable = new float[N_STATES][N_ACTIONS];
-        // Inicializa com valores aleatorios pequenos em vez de zeros.
-        // Isso faz o bot comecar testando botoes diferentes em vez de
-        // sempre clicar no mesmo (argMax de zeros = sempre indice 0).
         Random initRng = new Random();
         for (int i = 0; i < N_STATES; i++) {
             for (int j = 0; j < N_ACTIONS; j++) {
@@ -62,48 +48,41 @@ public class QLearningAgent {
         }
     }
 
-    /**
-     * Converte um GameState num indice discreto de estado.
-     * Combina faixa de HP do P1, faixa de HP do oponente, e faixa de movimento.
-     */
     public int discretizeState(GameState s) {
+        return discretizeState(s, lastActionChosen);
+    }
+
+    public int discretizeState(GameState s, int lastAction) {
         int p1Bin = hpToBin(s.p1Hp);
         int oppBin = hpToBin(s.oppHp);
         int motionBin = motionToBin(s.motion);
-        return p1Bin * (N_HP_BINS * N_MOTION_BINS) + oppBin * N_MOTION_BINS + motionBin;
+        int actBin = (lastAction >= 0 && lastAction < N_ACTIONS) ? lastAction : 0;
+        return ((p1Bin * N_HP_BINS + oppBin) * N_MOTION_BINS + motionBin) * N_ACTIONS + actBin;
     }
 
     private int hpToBin(int hp) {
         if (hp < 0) hp = 0;
         if (hp > 100) hp = 100;
-        return hp / 20;          // 0..4
+        return hp / 20;
     }
 
     private int motionToBin(int motion) {
-        if (motion < 10) return 0;      // parado / pausado
-        if (motion < 30) return 1;      // pouco movimento
-        return 2;                        // muito movimento
+        if (motion < 10) return 0;
+        if (motion < 30) return 1;
+        return 2;
     }
 
-    /**
-     * Escolhe uma acao usando epsilon-greedy.
-     * Com probabilidade epsilon, escolhe aleatoriamente (exploracao).
-     * Caso contrario, escolhe a acao com maior Q-value (exploracao).
-     */
     public int chooseAction(int stateIdx) {
         if (stateIdx < 0 || stateIdx >= N_STATES) return 0;
 
-        double eps = Math.max(EPSILON_MIN, EPSILON);
-        if (rng.nextDouble() < eps) {
-            return rng.nextInt(N_ACTIONS);
+        if (rng.nextDouble() < currentEpsilon) {
+            lastActionChosen = rng.nextInt(N_ACTIONS);
+            return lastActionChosen;
         }
-        return argMax(qTable[stateIdx]);
+        lastActionChosen = argMax(qTable[stateIdx]);
+        return lastActionChosen;
     }
 
-    /**
-     * Atualizacao do Q-learning:
-     *   Q(s,a) <- Q(s,a) + alpha * [r + gamma * max_a' Q(s',a') - Q(s,a)]
-     */
     public void update(int stateIdx, int actionIdx, double reward, int nextStateIdx) {
         if (stateIdx < 0 || stateIdx >= N_STATES) return;
         if (actionIdx < 0 || actionIdx >= N_ACTIONS) return;
@@ -119,10 +98,18 @@ public class QLearningAgent {
 
     public void onFightEnd() {
         fightsTrained++;
+        // Epsilon decay: a cada luta, reduz exploracao
+        currentEpsilon *= EPSILON_DECAY;
+        if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
+        System.out.println("Epsilon atual: " + currentEpsilon + " apos " + fightsTrained + " lutas");
     }
 
     public int getFightsTrained() {
         return fightsTrained;
+    }
+
+    public double getCurrentEpsilon() {
+        return currentEpsilon;
     }
 
     public float[][] getQTable() {
@@ -138,7 +125,19 @@ public class QLearningAgent {
         }
     }
 
-    // --- helpers ---
+    public void setFightsTrained(int count) {
+        fightsTrained = count;
+        // Recalcula epsilon baseado no numero de lutas
+        currentEpsilon = EPSILON_START;
+        for (int i = 0; i < count; i++) {
+            currentEpsilon *= EPSILON_DECAY;
+        }
+        if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
+    }
+
+    public void resetLastAction() {
+        lastActionChosen = -1;
+    }
 
     private int argMax(float[] arr) {
         int best = 0;
