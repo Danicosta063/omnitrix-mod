@@ -9,13 +9,20 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
+import android.graphics.PixelFormat;
 import android.hardware.HardwareBuffer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Display;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.Button;
 
 import com.exemplo.mkbot.brain.QLearningAgent;
 import com.exemplo.mkbot.vision.GameDetector;
@@ -62,15 +69,24 @@ public class BotService extends AccessibilityService {
     private QLearningAgent brain;
     private GameDetector detector;
 
+    // Overlay (painel flutuante)
+    private WindowManager windowManager;
+    private View overlayView;
+    private Button btnPlayPause;
+    private boolean overlayShown = false;
+    private int overlayInitialX = 100;
+    private int overlayInitialY = 100;
+
+    // Controle manual: so toca quando usuario aperta PLAY
+    private boolean manualPlay = false;
+
     private boolean loopRunning = false;
-    private boolean inFight = false;
     private boolean fightEnded = false;
     private boolean doingFatality = false;
     private int lastActionIndex = -1;
     private int repeatActionCount = 0;
     private GameState lastState = null;
     private int pausedFrames = 0;
-    private int motionStartFrames = 0;
     private int screenWidth = 1, screenHeight = 1;
     private int consecutiveHits = 0;
     private int p1HpAtEnd = 0;
@@ -88,15 +104,146 @@ public class BotService extends AccessibilityService {
         loadQTable();
         int fights = prefs.getInt(KEY_FIGHTS, 0);
         brain.setFightsTrained(fights);
-        Log.i(TAG, "BotService conectado. Lutas anteriores: " + fights);
+        showOverlay();
+        Log.i(TAG, "BotService conectado. Overlay mostrado.");
     }
+
+    // ============ OVERLAY (PAINEL FLUTUANTE) ============
+
+    private void showOverlay() {
+        if (overlayShown) return;
+        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (windowManager == null) return;
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        overlayView = inflater.inflate(R.layout.overlay_panel, null);
+
+        btnPlayPause = overlayView.findViewById(R.id.btnPlayPause);
+        Button btnClose = overlayView.findViewById(R.id.btnClose);
+
+        btnPlayPause.setOnClickListener(v -> togglePlay());
+        btnClose.setOnClickListener(v -> {
+            manualPlay = false;
+            updatePlayButton();
+            hideOverlay();
+        });
+
+        // Arrastar o overlay
+        overlayView.setOnTouchListener(new View.OnTouchListener() {
+            private int initialX, initialY;
+            private float touchX, touchY;
+            private boolean isDragging = false;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        initialX = overlayInitialX;
+                        initialY = overlayInitialY;
+                        touchX = event.getRawX();
+                        touchY = event.getRawY();
+                        isDragging = false;
+                        return false;
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = event.getRawX() - touchX;
+                        float dy = event.getRawY() - touchY;
+                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                            isDragging = true;
+                            overlayInitialX = initialX + (int) dx;
+                            overlayInitialY = initialY + (int) dy;
+                            updateOverlayPosition();
+                        }
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                        return isDragging;
+                }
+                return false;
+            }
+        });
+
+        int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                : WindowManager.LayoutParams.TYPE_SYSTEM_ALERT;
+
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.x = overlayInitialX;
+        params.y = overlayInitialY;
+
+        try {
+            windowManager.addView(overlayView, params);
+            overlayShown = true;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao mostrar overlay", e);
+        }
+    }
+
+    private void updateOverlayPosition() {
+        if (!overlayShown || windowManager == null) return;
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) overlayView.getLayoutParams();
+        params.x = overlayInitialX;
+        params.y = overlayInitialY;
+        try {
+            windowManager.updateViewLayout(overlayView, params);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao mover overlay", e);
+        }
+    }
+
+    private void hideOverlay() {
+        if (!overlayShown || windowManager == null) return;
+        try {
+            windowManager.removeView(overlayView);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao esconder overlay", e);
+        }
+        overlayShown = false;
+    }
+
+    private void togglePlay() {
+        manualPlay = !manualPlay;
+        updatePlayButton();
+        if (manualPlay) {
+            startLoop();
+            fightEnded = false;
+            doingFatality = false;
+            lastState = null;
+            lastActionIndex = -1;
+            repeatActionCount = 0;
+            consecutiveHits = 0;
+            pausedFrames = 0;
+            brain.resetLastAction();
+        } else {
+            // Pause: para de tocar mas continua capturando (pra detectar fim)
+        }
+    }
+
+    private void updatePlayButton() {
+        if (btnPlayPause == null) return;
+        mainHandler.post(() -> {
+            if (manualPlay) {
+                btnPlayPause.setText("PAUSE");
+                btnPlayPause.setBackgroundColor(0xFFF44336);
+            } else {
+                btnPlayPause.setText("PLAY");
+                btnPlayPause.setBackgroundColor(0xFF4CAF50);
+            }
+        });
+    }
+
+    // ============ EVENTOS DE ACESSIBILIDADE ============
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = event.getPackageName();
         if (EMULATOR_PKG.equals(pkg)) {
-            checkAndStartLoop();
+            startLoop();
         } else if (pkg != null && !pkg.equals("android")) {
             stopLoop();
         }
@@ -107,13 +254,10 @@ public class BotService extends AccessibilityService {
         stopLoop();
     }
 
-    private void checkAndStartLoop() {
-        boolean running = prefs.getBoolean(KEY_RUNNING, false);
-        if (running && !loopRunning) startLoop();
-        else if (!running && loopRunning) stopLoop();
-    }
+    // ============ LOOP DE CAPTURA ============
 
     private void startLoop() {
+        if (loopRunning) return;
         loopRunning = true;
         Log.i(TAG, "Loop iniciado.");
         mainHandler.post(captureRunnable);
@@ -122,12 +266,13 @@ public class BotService extends AccessibilityService {
     private void stopLoop() {
         loopRunning = false;
         mainHandler.removeCallbacks(captureRunnable);
-        inFight = false;
+        manualPlay = false;
         fightEnded = false;
         doingFatality = false;
         lastState = null;
         lastActionIndex = -1;
         repeatActionCount = 0;
+        updatePlayButton();
         Log.i(TAG, "Loop parado.");
     }
 
@@ -172,6 +317,8 @@ public class BotService extends AccessibilityService {
         }
     }
 
+    // ============ PROCESSAMENTO DE FRAME ============
+
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
         screenWidth = frame.getWidth();
@@ -180,47 +327,35 @@ public class BotService extends AccessibilityService {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            if (!inFight && !fightEnded && state.motion > 15) {
-                motionStartFrames++;
-                if (motionStartFrames >= 3) {
-                    inFight = true;
-                    fightEnded = false;
-                    doingFatality = false;
-                    pausedFrames = 0;
-                    consecutiveHits = 0;
-                    repeatActionCount = 0;
-                    brain.resetLastAction();
-                    Log.i(TAG, "Luta iniciada. motion=" + state.motion);
-                }
-            } else if (!inFight) {
-                motionStartFrames = 0;
-            }
+            Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
+                       " motion=" + state.motion + " flash=" + state.hitFlash +
+                       " play=" + manualPlay);
 
-            if (!inFight) {
+            // So toca se o usuario apertou PLAY
+            if (!manualPlay) {
                 return;
             }
 
             p1HpAtEnd = state.p1Hp;
             oppHpAtEnd = state.oppHp;
 
-            if (state.motion < 5) {
-                pausedFrames++;
-                if (pausedFrames > 40 && !fightEnded) {
-                    boolean win = decideWinner();
-                    onFightEnd(win);
+            // Detecta fim de luta por HP
+            if (!fightEnded) {
+                if (state.oppHp <= 0 && state.p1Hp > 20) {
+                    onFightEnd(true);
                     return;
                 }
-                if (pausedFrames > 15) {
+                if (state.p1Hp <= 0 && state.oppHp > 20) {
+                    onFightEnd(false);
                     return;
                 }
-            } else {
-                pausedFrames = 0;
             }
 
             if (fightEnded) {
                 return;
             }
 
+            // Conta acertos
             if (state.hitFlash) {
                 int hits = prefs.getInt(KEY_HITS, 0) + 1;
                 prefs.edit().putInt(KEY_HITS, hits).apply();
@@ -235,6 +370,7 @@ public class BotService extends AccessibilityService {
                 consecutiveHits = 0;
             }
 
+            // Recompensa
             double reward = 0;
             if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
@@ -243,28 +379,15 @@ public class BotService extends AccessibilityService {
                 if (state.hitFlash) reward += 2.0;
                 if (dmgDealt > 0) addPoints(dmgDealt);
                 if (dmgTaken > 0) addPoints(-dmgTaken);
-
                 if (lastActionIndex == 8 && dmgTaken == 0 && state.motion > 5) {
                     int blocks = prefs.getInt(KEY_BLOCKS, 0) + 1;
                     prefs.edit().putInt(KEY_BLOCKS, blocks).apply();
                     addPoints(3);
                 }
-
-                // PENALIDADE POR REPETIR A MESMA ACAO 3+ VEZES
-                if (lastActionIndex == actionIdxAnterior()) {
+                if (lastActionIndex == lastActionIndex && lastActionIndex >= 0) {
                     repeatActionCount++;
-                    if (repeatActionCount >= 3) {
-                        reward -= 1.0; // penalidade por spam
-                    }
-                } else {
-                    repeatActionCount = 0;
+                    if (repeatActionCount >= 3) reward -= 1.0;
                 }
-
-                // BONUS POR VARIAR (acao diferente da anterior)
-                if (lastActionIndex != actionIdxAnterior() && actionIdxAnterior() >= 0) {
-                    reward += 0.3;
-                }
-
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -275,6 +398,10 @@ public class BotService extends AccessibilityService {
                 int lastIdx = brain.discretizeState(lastState, lastActionIndex);
                 int nextIdx = brain.discretizeState(state, actionIdx);
                 brain.update(lastIdx, lastActionIndex, reward, nextIdx);
+            }
+
+            if (actionIdx != lastActionIndex) {
+                repeatActionCount = 0;
             }
 
             final int act = actionIdx;
@@ -290,16 +417,7 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    private int actionIdxAnterior() {
-        return lastActionIndex;
-    }
-
-    private boolean decideWinner() {
-        if (oppHpAtEnd <= 0 && p1HpAtEnd > 0) return true;
-        if (p1HpAtEnd <= 0 && oppHpAtEnd > 0) return false;
-        if (p1HpAtEnd > oppHpAtEnd) return true;
-        return false;
-    }
+    // ============ FIM DE LUTA ============
 
     private void addPoints(int amount) {
         int points = prefs.getInt(KEY_POINTS, 0) + amount;
@@ -309,7 +427,6 @@ public class BotService extends AccessibilityService {
     private void onFightEnd(boolean win) {
         if (fightEnded) return;
         fightEnded = true;
-        inFight = false;
 
         int fights = prefs.getInt(KEY_FIGHTS, 0) + 1;
         int wins   = prefs.getInt(KEY_WINS,    0);
@@ -327,7 +444,7 @@ public class BotService extends AccessibilityService {
             int idx = brain.discretizeState(lastState, lastActionIndex);
             brain.update(idx, lastActionIndex, terminal, idx);
         }
-        brain.onFightEnd(); // decai epsilon
+        brain.onFightEnd();
         saveQTable();
         Log.i(TAG, "Luta fim win=" + win + " total=" + fights +
               " epsilon=" + String.format("%.3f", brain.getCurrentEpsilon()));
@@ -340,17 +457,20 @@ public class BotService extends AccessibilityService {
             addPoints(30);
         }
 
+        // Para de jogar apos fim de luta (usuario precisa apertar PLAY de novo)
         mainHandler.postDelayed(() -> {
+            manualPlay = false;
             fightEnded = false;
             doingFatality = false;
             lastState = null;
             lastActionIndex = -1;
             repeatActionCount = 0;
-            motionStartFrames = 0;
+            consecutiveHits = 0;
             pausedFrames = 0;
             brain.resetLastAction();
-            Log.i(TAG, "Pronto para nova luta.");
-        }, 3000);
+            updatePlayButton();
+            Log.i(TAG, "Luta acabou. Aperte PLAY para proxima.");
+        }, 2000);
     }
 
     private void doFatality() {
@@ -359,6 +479,8 @@ public class BotService extends AccessibilityService {
         mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 70), 300);
         mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 600);
     }
+
+    // ============ TOQUES ============
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
@@ -393,6 +515,8 @@ public class BotService extends AccessibilityService {
             new GestureDescription.StrokeDescription(p, 0, durationMs);
         dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
     }
+
+    // ============ PERSISTENCIA ============
 
     private void saveQTable() {
         prefs.edit().putString(KEY_QTABLE, gson.toJson(brain.getQTable())).apply();
