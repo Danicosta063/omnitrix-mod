@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
 import android.widget.TextView;
@@ -61,8 +62,15 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             boolean running = prefs.getBoolean(KEY_RUNNING, false);
-            prefs.edit().putBoolean(KEY_RUNNING, !running).apply();
+            // CORRECAO: toggle real - se running=true, vira false; se false, vira true
+            boolean newRunning = !running;
+            prefs.edit().putBoolean(KEY_RUNNING, newRunning).apply();
             updateActivateButton();
+            // Se desativou o bot, tambem para de jogar
+            if (!newRunning) {
+                prefs.edit().putBoolean(KEY_PLAY_MODE, false).apply();
+            }
+            updatePlayUI();
         });
 
         updateActivateButton();
@@ -71,8 +79,6 @@ public class MainActivity extends AppCompatActivity {
         updateFolderStatus();
         startTimer();
     }
-
-    // ============ SELECAO DE PASTA ============
 
     private void selectFolder() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -88,16 +94,12 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == FOLDER_REQUEST_CODE && resultCode == RESULT_OK) {
             if (data != null && data.getData() != null) {
                 Uri treeUri = data.getData();
-                // Persiste a permissao pra funcionar depois de reiniciar
                 getContentResolver().takePersistableUriPermission(treeUri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                         | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply();
-
-                // Verifica se ja tem arquivo de progresso la
                 String status = BackupManager.checkAndLoad(this, prefs);
                 Toast.makeText(this, status, Toast.LENGTH_LONG).show();
-
                 updateFolderStatus();
             }
         }
@@ -115,27 +117,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ============ UI ============
-
     private void updateActivateButton() {
         Button btnActivate = findViewById(R.id.btnActivate);
         boolean running = prefs.getBoolean(KEY_RUNNING, false);
+        // Se running=true -> botao diz "Desativar" (pra poder desativar)
+        // Se running=false -> botao diz "Ativar" (pra poder ativar)
         btnActivate.setText(running ? R.string.deactivate_bot : R.string.activate_bot);
     }
 
     private void updatePlayUI() {
         TextView txtStatus = findViewById(R.id.txtStatus);
         boolean playing = prefs.getBoolean(KEY_PLAY_MODE, false);
+        boolean running = prefs.getBoolean(KEY_RUNNING, false);
         if (playing) {
             txtStatus.setText("Bot jogando");
             txtStatus.setTextColor(0xFF4CAF50);
+            // Mantem tela acesa enquanto joga
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else if (running) {
+            txtStatus.setText("Bot ativado - segure Volume+ 3s");
+            txtStatus.setTextColor(0xFFFF9800);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
-            txtStatus.setText("Bot parado");
+            txtStatus.setText("Bot desativado");
             txtStatus.setTextColor(0xFF888888);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
     }
-
-    // ============ CONTADOR DE HORAS ============
 
     private void startTimer() {
         timerRunnable = new Runnable() {
@@ -165,8 +173,6 @@ public class MainActivity extends AppCompatActivity {
         txtHours.setText("Horas jogadas: " +
                 String.format("%02d:%02d:%02d", h, m, s));
     }
-
-    // ============ ACESSIBILIDADE ============
 
     private boolean isAccessibilityEnabled() {
         AccessibilityManager am =
