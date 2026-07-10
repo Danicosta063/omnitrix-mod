@@ -3,6 +3,7 @@ package com.exemplo.mkbot;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityService.ScreenshotResult;
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.accessibilityservice.GestureDescription;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -10,11 +11,13 @@ import android.graphics.Bitmap;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
 import android.hardware.HardwareBuffer;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 import com.exemplo.mkbot.brain.QLearningAgent;
@@ -31,6 +34,8 @@ public class BotService extends AccessibilityService {
     private static final String PREFS = "mkbot_prefs";
     private static final String KEY_RUNNING = "running";
     private static final String KEY_PLAY_MODE = "playMode";
+    private static final String KEY_PLAY_START = "playStart";
+    private static final String KEY_TOTAL_PLAY = "totalPlay";
     private static final String KEY_QTABLE = "qtable";
     private static final String KEY_FIGHTS = "fights";
 
@@ -56,6 +61,12 @@ public class BotService extends AccessibilityService {
     private QLearningAgent brain;
     private GameDetector detector;
 
+    // Volume button hold tracking
+    private boolean volUpHolding = false;
+    private boolean volDownHolding = false;
+    private Runnable volUpHoldRunnable;
+    private Runnable volDownHoldRunnable;
+
     private boolean loopRunning = false;
     private int lastActionIndex = -1;
     private int repeatActionCount = 0;
@@ -76,8 +87,101 @@ public class BotService extends AccessibilityService {
         loadQTable();
         int fights = prefs.getInt(KEY_FIGHTS, 0);
         brain.setFightsTrained(fights);
+
+        // Ativa captura de eventos de tecla (botoes de volume)
+        AccessibilityServiceInfo info = getServiceInfo();
+        if (info != null) {
+            info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
+            setServiceInfo(info);
+        }
         Log.i(TAG, "BotService conectado.");
     }
+
+    // ============ BOTOES DE VOLUME ============
+
+    @Override
+    public boolean onKeyEvent(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        int action = event.getAction();
+
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            if (action == KeyEvent.ACTION_DOWN) {
+                volUpHolding = false;
+                volUpHoldRunnable = () -> {
+                    volUpHolding = true;
+                    setPlayMode(true);
+                    Log.i(TAG, "Volume+ segurado 3s - BOT JOGANDO");
+                };
+                mainHandler.postDelayed(volUpHoldRunnable, 3000);
+                return true; // Consome - bloqueia mudanca de volume
+            } else if (action == KeyEvent.ACTION_UP) {
+                if (volUpHoldRunnable != null) {
+                    mainHandler.removeCallbacks(volUpHoldRunnable);
+                    volUpHoldRunnable = null;
+                }
+                if (volUpHolding) {
+                    volUpHolding = false;
+                    return true; // Consome UP (ja triggerou)
+                } else {
+                    // Toque rapido - mudar volume normal
+                    adjustVolume(true);
+                    return true;
+                }
+            }
+        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (action == KeyEvent.ACTION_DOWN) {
+                volDownHolding = false;
+                volDownHoldRunnable = () -> {
+                    volDownHolding = true;
+                    setPlayMode(false);
+                    Log.i(TAG, "Volume- segurado 3s - BOT PARADO");
+                };
+                mainHandler.postDelayed(volDownHoldRunnable, 3000);
+                return true;
+            } else if (action == KeyEvent.ACTION_UP) {
+                if (volDownHoldRunnable != null) {
+                    mainHandler.removeCallbacks(volDownHoldRunnable);
+                    volDownHoldRunnable = null;
+                }
+                if (volDownHolding) {
+                    volDownHolding = false;
+                    return true;
+                } else {
+                    adjustVolume(false);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Muda o volume manualmente (toque rapido)
+    private void adjustVolume(boolean up) {
+        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (am == null) return;
+        int dir = up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER;
+        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir,
+                AudioManager.FLAG_SHOW_UI);
+    }
+
+    // Ativa/desativa o modo jogo e rastreia tempo
+    private void setPlayMode(boolean play) {
+        SharedPreferences.Editor ed = prefs.edit();
+        if (play) {
+            ed.putLong(KEY_PLAY_START, System.currentTimeMillis());
+        } else {
+            long start = prefs.getLong(KEY_PLAY_START, 0);
+            if (start > 0) {
+                long elapsed = System.currentTimeMillis() - start;
+                long total = prefs.getLong(KEY_TOTAL_PLAY, 0) + elapsed;
+                ed.putLong(KEY_TOTAL_PLAY, total);
+                ed.putLong(KEY_PLAY_START, 0);
+            }
+        }
+        ed.putBoolean(KEY_PLAY_MODE, play).apply();
+    }
+
+    // ============ EVENTOS DE ACESSIBILIDADE ============
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -94,6 +198,8 @@ public class BotService extends AccessibilityService {
     public void onInterrupt() {
         stopLoop();
     }
+
+    // ============ LOOP DE CAPTURA ============
 
     private void startLoop() {
         if (loopRunning) return;
@@ -152,10 +258,12 @@ public class BotService extends AccessibilityService {
         }
     }
 
+    // ============ PROCESSAMENTO ============
+
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
 
-        // Só toca se o usuario ativou o playMode (segurou + por 3s)
+        // So toca se o usuario segurou Volume+ por 3s
         if (!prefs.getBoolean(KEY_PLAY_MODE, false)) {
             frame.recycle();
             return;
@@ -167,14 +275,12 @@ public class BotService extends AccessibilityService {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            // Conta acertos
             if (state.hitFlash) {
                 consecutiveHits++;
             } else {
                 consecutiveHits = 0;
             }
 
-            // Recompensa densa
             double reward = 0;
             if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
@@ -182,7 +288,6 @@ public class BotService extends AccessibilityService {
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
 
-                // Penalidade por repetir a mesma acao 3+ vezes
                 if (lastActionIndex == actionIdxAnterior()) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
@@ -210,7 +315,6 @@ public class BotService extends AccessibilityService {
             lastState = state;
             lastActionIndex = actionIdx;
 
-            // Salvar Q-table a cada 100 frames
             saveCounter++;
             if (saveCounter % 100 == 0) saveQTable();
 
@@ -224,6 +328,8 @@ public class BotService extends AccessibilityService {
     private int actionIdxAnterior() {
         return lastActionIndex;
     }
+
+    // ============ TOQUES ============
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
@@ -258,6 +364,8 @@ public class BotService extends AccessibilityService {
             new GestureDescription.StrokeDescription(p, 0, durationMs);
         dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
     }
+
+    // ============ PERSISTENCIA ============
 
     private void saveQTable() {
         prefs.edit().putString(KEY_QTABLE, gson.toJson(brain.getQTable())).apply();
