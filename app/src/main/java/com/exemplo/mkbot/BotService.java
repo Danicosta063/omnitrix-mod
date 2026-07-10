@@ -37,10 +37,12 @@ public class BotService extends AccessibilityService {
     private static final String KEY_PLAY_START = "playStart";
     private static final String KEY_TOTAL_PLAY = "totalPlay";
     private static final String KEY_QTABLE = "qtable";
+    private static final String KEY_FIGHTS = "fights";
 
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
 
+    // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
     private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
@@ -83,7 +85,6 @@ public class BotService extends AccessibilityService {
         brain = new QLearningAgent();
         detector = new GameDetector();
         loadQTable();
-        // Restaura epsilon baseado no tempo total ja jogado
         long totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0);
         brain.restoreEpsilonByTime(totalPlay);
 
@@ -92,8 +93,7 @@ public class BotService extends AccessibilityService {
             info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
             setServiceInfo(info);
         }
-        Log.i(TAG, "BotService conectado. Tempo total jogado: " +
-              (totalPlay / 60000) + " min");
+        Log.i(TAG, "BotService conectado.");
     }
 
     // ============ BOTOES DE VOLUME ============
@@ -268,13 +268,10 @@ public class BotService extends AccessibilityService {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            // Calcula tempo total jogado (atual + acumulado)
             long currentSession = 0;
             long start = prefs.getLong(KEY_PLAY_START, 0);
             if (start > 0) currentSession = System.currentTimeMillis() - start;
             long totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0) + currentSession;
-
-            // Decai epsilon por tempo (a cada 5 min)
             brain.decayEpsilonByTime(totalPlay);
 
             if (state.hitFlash) {
@@ -289,10 +286,23 @@ public class BotService extends AccessibilityService {
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-                if (lastActionIndex == lastActionIndex) {
+
+                // BONUS POR THROW (quebra block da IA)
+                if (lastActionIndex == 9 && dmgDealt > 0) {
+                    reward += 5.0;
+                }
+
+                // BONUS POR RECUAR APOS BLOCK (nao fica preso pra tomar throw)
+                if (lastActionIndex == 8 && lastActionIndex == 4 && dmgTaken == 0) {
+                    reward += 1.0;
+                }
+
+                // PENALIDADE POR REPETIR 3+ VEZES
+                if (lastActionIndex == actionIdxAnterior()) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
                 }
+
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -328,24 +338,70 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    // ============ TOQUES ============
+    private int actionIdxAnterior() {
+        return lastActionIndex;
+    }
+
+    // ============ TOQUES - ARSENAL DO SCORPION ============
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
-            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
-            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
-            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
-            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;
-            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;
-            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
-            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
-            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
-            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 400); break;
-            case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;
-            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
-            case 11: break;
+            // Acoes basicas
+            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;              // Quadrado
+            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;              // Triangulo
+            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;              // X/Cross
+            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;              // Circulo
+            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;          // Recuar
+            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;            // Avancar
+            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;              // Pular
+            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;          // Agachar
+            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 150); break;      // Block curto (150ms)
+            case 9: tap(BTN_R2_X, BTN_R2_Y, 70); break;              // Throw (R2)
+            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;     // Pegar arma
+            case 11: break;                                          // Idle
+            // Arsenal do Scorpion (manhas de pro)
+            case 12: scorpionBloodySpear(); break;     // Back, Fwd + A1
+            case 13: scorpionHellfire(); break;        // Down, Back + A2
+            case 14: scorpionBackflipKick(); break;    // Fwd, Back + A3
+            case 15: scorpionHellfirePunch(); break;   // Fwd, Back + A4
+            case 16: scorpionTripleCombo(); break;     // A2, A2, A3
             default: break;
         }
+    }
+
+    // Bloody Spear: Back, Forward + A1 (puxa o inimigo)
+    private void scorpionBloodySpear() {
+        tap(BTN_BACK_X, BTN_BACK_Y, 60);
+        mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
+        mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+    }
+
+    // Hellfire: Down, Back + A2 (fogo no chao)
+    private void scorpionHellfire() {
+        tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
+        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+        mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
+    }
+
+    // Backflip Kick: Forward, Back + A3 (anti-aereo)
+    private void scorpionBackflipKick() {
+        tap(BTN_FWD_X, BTN_FWD_Y, 60);
+        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+        mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
+    }
+
+    // Hellfire Punch: Forward, Back + A4 (teleporte flamejante)
+    private void scorpionHellfirePunch() {
+        tap(BTN_FWD_X, BTN_FWD_Y, 60);
+        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+        mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
+    }
+
+    // Triple Combo: A2, A2, A3 (combo de 3 hits)
+    private void scorpionTripleCombo() {
+        tap(BTN_A2_X, BTN_A2_Y, 70);
+        mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 150);
+        mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 300);
     }
 
     private void tap(float fx, float fy, long durationMs) {
