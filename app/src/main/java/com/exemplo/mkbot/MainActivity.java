@@ -31,12 +31,16 @@ public class MainActivity extends AppCompatActivity {
     private static final String SERVICE_NAME = "com.exemplo.mkbot/.BotService";
 
     private SharedPreferences prefs;
-    private int appState = 0; // 0=login, 1=register, 2=main
+    private int appState = 0;
     private Handler handler = new Handler();
     private Handler timerHandler = new Handler();
     private Runnable plusHoldRunnable;
     private Runnable minusHoldRunnable;
+    private Runnable plusCountdownRunnable;
+    private Runnable minusCountdownRunnable;
     private Runnable timerRunnable;
+    private int plusCountdown = 3;
+    private int minusCountdown = 3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -123,41 +127,91 @@ public class MainActivity extends AppCompatActivity {
             updateActivateButton();
         });
 
-        // Botão +: segurar 3s pra JOGAR
+        // Botão +: segurar 3s pra JOGAR (com countdown visual)
         btnPlus.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
+                        // Muda cor imediatamente pra indicar que registrou
+                        btnPlus.setBackgroundColor(0xFF4CAF50);
+                        btnPlus.setTextColor(0xFFFFFFFF);
+                        plusCountdown = 3;
+                        btnPlus.setText(String.valueOf(plusCountdown));
+                        // Countdown a cada 1 segundo
+                        plusCountdownRunnable = new Runnable() {
+                            @Override
+                            public void run() {
+                                plusCountdown--;
+                                if (plusCountdown > 0) {
+                                    btnPlus.setText(String.valueOf(plusCountdown));
+                                    handler.postDelayed(this, 1000);
+                                }
+                            }
+                        };
+                        handler.postDelayed(plusCountdownRunnable, 1000);
+                        // Dispara apos 3 segundos
                         plusHoldRunnable = () -> {
                             setPlayMode(true);
                             updatePlayUI(true);
                             startTimer();
+                            btnPlus.setText("OK");
+                            Toast.makeText(MainActivity.this, "Bot jogando!",
+                                    Toast.LENGTH_SHORT).show();
                         };
                         handler.postDelayed(plusHoldRunnable, 3000);
                         return true;
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
+                        // Soltou antes de 3s - cancela tudo
                         if (plusHoldRunnable != null) {
                             handler.removeCallbacks(plusHoldRunnable);
                             plusHoldRunnable = null;
                         }
+                        if (plusCountdownRunnable != null) {
+                            handler.removeCallbacks(plusCountdownRunnable);
+                            plusCountdownRunnable = null;
+                        }
+                        // Volta o botao ao estado normal
+                        if (!prefs.getBoolean(KEY_PLAY_MODE, false)) {
+                            btnPlus.setBackgroundColor(0xFFCCCCCC);
+                            btnPlus.setTextColor(0xFF000000);
+                        }
+                        btnPlus.setText(R.string.plus);
                         return true;
                 }
                 return false;
             }
         });
 
-        // Botão -: segurar 3s pra PARAR
+        // Botão -: segurar 3s pra PARAR (com countdown visual)
         btnMinus.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
+                        btnMinus.setBackgroundColor(0xFFF44336);
+                        btnMinus.setTextColor(0xFFFFFFFF);
+                        minusCountdown = 3;
+                        btnMinus.setText(String.valueOf(minusCountdown));
+                        minusCountdownRunnable = new Runnable() {
+                            @Override
+                            public void run() {
+                                minusCountdown--;
+                                if (minusCountdown > 0) {
+                                    btnMinus.setText(String.valueOf(minusCountdown));
+                                    handler.postDelayed(this, 1000);
+                                }
+                            }
+                        };
+                        handler.postDelayed(minusCountdownRunnable, 1000);
                         minusHoldRunnable = () -> {
                             setPlayMode(false);
                             updatePlayUI(false);
                             stopTimer();
+                            btnMinus.setText("OK");
+                            Toast.makeText(MainActivity.this, "Bot parado!",
+                                    Toast.LENGTH_SHORT).show();
                         };
                         handler.postDelayed(minusHoldRunnable, 3000);
                         return true;
@@ -167,6 +221,15 @@ public class MainActivity extends AppCompatActivity {
                             handler.removeCallbacks(minusHoldRunnable);
                             minusHoldRunnable = null;
                         }
+                        if (minusCountdownRunnable != null) {
+                            handler.removeCallbacks(minusCountdownRunnable);
+                            minusCountdownRunnable = null;
+                        }
+                        if (prefs.getBoolean(KEY_PLAY_MODE, false)) {
+                            btnMinus.setBackgroundColor(0xFFCCCCCC);
+                            btnMinus.setTextColor(0xFF000000);
+                        }
+                        btnMinus.setText(R.string.minus);
                         return true;
                 }
                 return false;
@@ -204,15 +267,19 @@ public class MainActivity extends AppCompatActivity {
         if (playing) {
             btnPlus.setBackgroundColor(0xFF4CAF50);
             btnPlus.setTextColor(0xFFFFFFFF);
+            btnPlus.setText(R.string.plus);
             btnMinus.setBackgroundColor(0xFFCCCCCC);
             btnMinus.setTextColor(0xFF000000);
+            btnMinus.setText(R.string.minus);
             txtStatus.setText("Bot jogando");
             txtStatus.setTextColor(0xFF4CAF50);
         } else {
             btnPlus.setBackgroundColor(0xFFCCCCCC);
             btnPlus.setTextColor(0xFF000000);
+            btnPlus.setText(R.string.plus);
             btnMinus.setBackgroundColor(0xFFF44336);
             btnMinus.setTextColor(0xFFFFFFFF);
+            btnMinus.setText(R.string.minus);
             txtStatus.setText("Bot parado");
             txtStatus.setTextColor(0xFF888888);
         }
