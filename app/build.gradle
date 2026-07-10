@@ -42,7 +42,6 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.core:core:1.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
-
-    // Declara explicitamente para alinhar com a versão forçada acima
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    implementation 'androidx.documentfile:documentfile:1.0.1'
 }
