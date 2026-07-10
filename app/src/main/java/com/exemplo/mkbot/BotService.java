@@ -8,8 +8,10 @@ import android.accessibilityservice.GestureDescription;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
+import android.graphics.PixelFormat;
 import android.hardware.HardwareBuffer;
 import android.media.AudioManager;
 import android.os.Build;
@@ -17,8 +19,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Display;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import com.exemplo.mkbot.brain.QLearningAgent;
 import com.exemplo.mkbot.vision.GameDetector;
@@ -42,7 +50,6 @@ public class BotService extends AccessibilityService {
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
 
-    // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
     private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
@@ -61,6 +68,11 @@ public class BotService extends AccessibilityService {
     private Gson gson;
     private QLearningAgent brain;
     private GameDetector detector;
+
+    // Overlay bloqueante (trava a tela)
+    private WindowManager windowManager;
+    private View lockOverlay;
+    private boolean lockShown = false;
 
     private boolean volUpHolding = false;
     private boolean volDownHolding = false;
@@ -96,6 +108,66 @@ public class BotService extends AccessibilityService {
         Log.i(TAG, "BotService conectado.");
     }
 
+    // ============ OVERLAY BLOQUEANTE ============
+
+    // Mostra overlay que cobre a tela e bloqueia toques
+    private void showLockOverlay() {
+        if (lockShown) return;
+        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (windowManager == null) return;
+
+        // Layout com fundo preto semi-transparente + texto
+        FrameLayout layout = new FrameLayout(this);
+        layout.setBackgroundColor(0xCC000000); // preto 80% opaco
+
+        TextView text = new TextView(this);
+        text.setText("🔒 BOT JOGANDO\n\nSegure Volume− por 3s\npara parar");
+        text.setTextColor(Color.WHITE);
+        text.setTextSize(20);
+        text.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT);
+        textParams.gravity = Gravity.CENTER;
+        layout.addView(text, textParams);
+
+        int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                : WindowManager.LayoutParams.TYPE_SYSTEM_ALERT;
+
+        // SEM FLAG_NOT_FOCUSABLE = bloqueia toques (nao deixa passar pra baixo)
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.CENTER;
+
+        try {
+            windowManager.addView(layout, params);
+            lockOverlay = layout;
+            lockShown = true;
+            Log.i(TAG, "Overlay bloqueante ativado");
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao mostrar overlay", e);
+        }
+    }
+
+    // Esconde overlay (libera a tela)
+    private void hideLockOverlay() {
+        if (!lockShown || windowManager == null) return;
+        try {
+            windowManager.removeView(lockOverlay);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao esconder overlay", e);
+        }
+        lockOverlay = null;
+        lockShown = false;
+        Log.i(TAG, "Overlay bloqueante desativado");
+    }
+
     // ============ BOTOES DE VOLUME ============
 
     @Override
@@ -109,7 +181,8 @@ public class BotService extends AccessibilityService {
                 volUpHoldRunnable = () -> {
                     volUpHolding = true;
                     setPlayMode(true);
-                    Log.i(TAG, "Volume+ segurado 3s - BOT JOGANDO");
+                    showLockOverlay();
+                    Log.i(TAG, "Volume+ segurado 3s - BOT JOGANDO + TELA BLOQUEADA");
                 };
                 mainHandler.postDelayed(volUpHoldRunnable, 3000);
                 return true;
@@ -132,7 +205,8 @@ public class BotService extends AccessibilityService {
                 volDownHoldRunnable = () -> {
                     volDownHolding = true;
                     setPlayMode(false);
-                    Log.i(TAG, "Volume- segurado 3s - BOT PARADO");
+                    hideLockOverlay();
+                    Log.i(TAG, "Volume- segurado 3s - BOT PARADO + TELA LIBERADA");
                 };
                 mainHandler.postDelayed(volDownHoldRunnable, 3000);
                 return true;
@@ -185,7 +259,10 @@ public class BotService extends AccessibilityService {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = event.getPackageName();
         if (EMULATOR_PKG.equals(pkg)) {
-            startLoop();
+            // CORRECAO: so inicia o loop se o usuario ativou o bot (KEY_RUNNING=true)
+            if (prefs.getBoolean(KEY_RUNNING, false)) {
+                startLoop();
+            }
         } else if (pkg != null && !pkg.equals("android")) {
             stopLoop();
         }
@@ -217,6 +294,11 @@ public class BotService extends AccessibilityService {
         public void run() {
             if (!loopRunning) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
+            // Se o usuario desativou o bot, para o loop
+            if (!prefs.getBoolean(KEY_RUNNING, false)) {
+                stopLoop();
+                return;
+            }
             takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(),
                 new TakeScreenshotCallback() {
                     @Override
@@ -286,23 +368,12 @@ public class BotService extends AccessibilityService {
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-
-                // BONUS POR THROW (quebra block da IA)
-                if (lastActionIndex == 9 && dmgDealt > 0) {
-                    reward += 5.0;
-                }
-
-                // BONUS POR RECUAR APOS BLOCK (nao fica preso pra tomar throw)
-                if (lastActionIndex == 8 && lastActionIndex == 4 && dmgTaken == 0) {
-                    reward += 1.0;
-                }
-
-                // PENALIDADE POR REPETIR 3+ VEZES
+                if (lastActionIndex == 9 && dmgDealt > 0) reward += 5.0;
+                if (lastActionIndex == 8 && lastActionIndex == 4 && dmgTaken == 0) reward += 1.0;
                 if (lastActionIndex == actionIdxAnterior()) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
                 }
-
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -346,58 +417,51 @@ public class BotService extends AccessibilityService {
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
-            // Acoes basicas
-            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;              // Quadrado
-            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;              // Triangulo
-            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;              // X/Cross
-            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;              // Circulo
-            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;          // Recuar
-            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;            // Avancar
-            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;              // Pular
-            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;          // Agachar
-            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 150); break;      // Block curto (150ms)
-            case 9: tap(BTN_R2_X, BTN_R2_Y, 70); break;              // Throw (R2)
-            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;     // Pegar arma
-            case 11: break;                                          // Idle
-            // Arsenal do Scorpion (manhas de pro)
-            case 12: scorpionBloodySpear(); break;     // Back, Fwd + A1
-            case 13: scorpionHellfire(); break;        // Down, Back + A2
-            case 14: scorpionBackflipKick(); break;    // Fwd, Back + A3
-            case 15: scorpionHellfirePunch(); break;   // Fwd, Back + A4
-            case 16: scorpionTripleCombo(); break;     // A2, A2, A3
+            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
+            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
+            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
+            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;
+            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;
+            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
+            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
+            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
+            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 150); break;
+            case 9: tap(BTN_R2_X, BTN_R2_Y, 70); break;
+            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
+            case 11: break;
+            case 12: scorpionBloodySpear(); break;
+            case 13: scorpionHellfire(); break;
+            case 14: scorpionBackflipKick(); break;
+            case 15: scorpionHellfirePunch(); break;
+            case 16: scorpionTripleCombo(); break;
             default: break;
         }
     }
 
-    // Bloody Spear: Back, Forward + A1 (puxa o inimigo)
     private void scorpionBloodySpear() {
         tap(BTN_BACK_X, BTN_BACK_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
     }
 
-    // Hellfire: Down, Back + A2 (fogo no chao)
     private void scorpionHellfire() {
         tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
     }
 
-    // Backflip Kick: Forward, Back + A3 (anti-aereo)
     private void scorpionBackflipKick() {
         tap(BTN_FWD_X, BTN_FWD_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
     }
 
-    // Hellfire Punch: Forward, Back + A4 (teleporte flamejante)
     private void scorpionHellfirePunch() {
         tap(BTN_FWD_X, BTN_FWD_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
     }
 
-    // Triple Combo: A2, A2, A3 (combo de 3 hits)
     private void scorpionTripleCombo() {
         tap(BTN_A2_X, BTN_A2_Y, 70);
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 150);
