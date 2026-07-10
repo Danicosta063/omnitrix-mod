@@ -9,20 +9,13 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
-import android.graphics.PixelFormat;
 import android.hardware.HardwareBuffer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Display;
-import android.view.Gravity;
-import android.view.LayoutInflater;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.Button;
 
 import com.exemplo.mkbot.brain.QLearningAgent;
 import com.exemplo.mkbot.vision.GameDetector;
@@ -37,15 +30,9 @@ public class BotService extends AccessibilityService {
     private static final String TAG = "MKBot";
     private static final String PREFS = "mkbot_prefs";
     private static final String KEY_RUNNING = "running";
+    private static final String KEY_PLAY_MODE = "playMode";
     private static final String KEY_QTABLE = "qtable";
     private static final String KEY_FIGHTS = "fights";
-    private static final String KEY_WINS = "wins";
-    private static final String KEY_LOSSES = "losses";
-    private static final String KEY_POINTS = "points";
-    private static final String KEY_HITS = "hits";
-    private static final String KEY_COMBOS = "combos";
-    private static final String KEY_BLOCKS = "blocks";
-    private static final String KEY_FATALITIES = "fatalities";
 
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
@@ -69,28 +56,13 @@ public class BotService extends AccessibilityService {
     private QLearningAgent brain;
     private GameDetector detector;
 
-    // Overlay (painel flutuante)
-    private WindowManager windowManager;
-    private View overlayView;
-    private Button btnPlayPause;
-    private boolean overlayShown = false;
-    private int overlayInitialX = 100;
-    private int overlayInitialY = 100;
-
-    // Controle manual: so toca quando usuario aperta PLAY
-    private boolean manualPlay = false;
-
     private boolean loopRunning = false;
-    private boolean fightEnded = false;
-    private boolean doingFatality = false;
     private int lastActionIndex = -1;
     private int repeatActionCount = 0;
     private GameState lastState = null;
-    private int pausedFrames = 0;
     private int screenWidth = 1, screenHeight = 1;
     private int consecutiveHits = 0;
-    private int p1HpAtEnd = 0;
-    private int oppHpAtEnd = 0;
+    private int saveCounter = 0;
 
     @Override
     protected void onServiceConnected() {
@@ -104,139 +76,8 @@ public class BotService extends AccessibilityService {
         loadQTable();
         int fights = prefs.getInt(KEY_FIGHTS, 0);
         brain.setFightsTrained(fights);
-        showOverlay();
-        Log.i(TAG, "BotService conectado. Overlay mostrado.");
+        Log.i(TAG, "BotService conectado.");
     }
-
-    // ============ OVERLAY (PAINEL FLUTUANTE) ============
-
-    private void showOverlay() {
-        if (overlayShown) return;
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        if (windowManager == null) return;
-
-        LayoutInflater inflater = LayoutInflater.from(this);
-        overlayView = inflater.inflate(R.layout.overlay_panel, null);
-
-        btnPlayPause = overlayView.findViewById(R.id.btnPlayPause);
-        Button btnClose = overlayView.findViewById(R.id.btnClose);
-
-        btnPlayPause.setOnClickListener(v -> togglePlay());
-        btnClose.setOnClickListener(v -> {
-            manualPlay = false;
-            updatePlayButton();
-            hideOverlay();
-        });
-
-        // Arrastar o overlay
-        overlayView.setOnTouchListener(new View.OnTouchListener() {
-            private int initialX, initialY;
-            private float touchX, touchY;
-            private boolean isDragging = false;
-
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        initialX = overlayInitialX;
-                        initialY = overlayInitialY;
-                        touchX = event.getRawX();
-                        touchY = event.getRawY();
-                        isDragging = false;
-                        return false;
-                    case MotionEvent.ACTION_MOVE:
-                        float dx = event.getRawX() - touchX;
-                        float dy = event.getRawY() - touchY;
-                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                            isDragging = true;
-                            overlayInitialX = initialX + (int) dx;
-                            overlayInitialY = initialY + (int) dy;
-                            updateOverlayPosition();
-                        }
-                        return true;
-                    case MotionEvent.ACTION_UP:
-                        return isDragging;
-                }
-                return false;
-            }
-        });
-
-        int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-                : WindowManager.LayoutParams.TYPE_SYSTEM_ALERT;
-
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                overlayType,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.TRANSLUCENT);
-        params.gravity = Gravity.TOP | Gravity.START;
-        params.x = overlayInitialX;
-        params.y = overlayInitialY;
-
-        try {
-            windowManager.addView(overlayView, params);
-            overlayShown = true;
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao mostrar overlay", e);
-        }
-    }
-
-    private void updateOverlayPosition() {
-        if (!overlayShown || windowManager == null) return;
-        WindowManager.LayoutParams params = (WindowManager.LayoutParams) overlayView.getLayoutParams();
-        params.x = overlayInitialX;
-        params.y = overlayInitialY;
-        try {
-            windowManager.updateViewLayout(overlayView, params);
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao mover overlay", e);
-        }
-    }
-
-    private void hideOverlay() {
-        if (!overlayShown || windowManager == null) return;
-        try {
-            windowManager.removeView(overlayView);
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao esconder overlay", e);
-        }
-        overlayShown = false;
-    }
-
-    private void togglePlay() {
-        manualPlay = !manualPlay;
-        updatePlayButton();
-        if (manualPlay) {
-            startLoop();
-            fightEnded = false;
-            doingFatality = false;
-            lastState = null;
-            lastActionIndex = -1;
-            repeatActionCount = 0;
-            consecutiveHits = 0;
-            pausedFrames = 0;
-            brain.resetLastAction();
-        } else {
-            // Pause: para de tocar mas continua capturando (pra detectar fim)
-        }
-    }
-
-    private void updatePlayButton() {
-        if (btnPlayPause == null) return;
-        mainHandler.post(() -> {
-            if (manualPlay) {
-                btnPlayPause.setText("PAUSE");
-                btnPlayPause.setBackgroundColor(0xFFF44336);
-            } else {
-                btnPlayPause.setText("PLAY");
-                btnPlayPause.setBackgroundColor(0xFF4CAF50);
-            }
-        });
-    }
-
-    // ============ EVENTOS DE ACESSIBILIDADE ============
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -254,8 +95,6 @@ public class BotService extends AccessibilityService {
         stopLoop();
     }
 
-    // ============ LOOP DE CAPTURA ============
-
     private void startLoop() {
         if (loopRunning) return;
         loopRunning = true;
@@ -266,13 +105,9 @@ public class BotService extends AccessibilityService {
     private void stopLoop() {
         loopRunning = false;
         mainHandler.removeCallbacks(captureRunnable);
-        manualPlay = false;
-        fightEnded = false;
-        doingFatality = false;
         lastState = null;
         lastActionIndex = -1;
         repeatActionCount = 0;
-        updatePlayButton();
         Log.i(TAG, "Loop parado.");
     }
 
@@ -317,77 +152,42 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    // ============ PROCESSAMENTO DE FRAME ============
-
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
+
+        // Só toca se o usuario ativou o playMode (segurou + por 3s)
+        if (!prefs.getBoolean(KEY_PLAY_MODE, false)) {
+            frame.recycle();
+            return;
+        }
+
         screenWidth = frame.getWidth();
         screenHeight = frame.getHeight();
         try {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
             if (state == null) return;
 
-            Log.i(TAG, "HP P1=" + state.p1Hp + " opp=" + state.oppHp +
-                       " motion=" + state.motion + " flash=" + state.hitFlash +
-                       " play=" + manualPlay);
-
-            // So toca se o usuario apertou PLAY
-            if (!manualPlay) {
-                return;
-            }
-
-            p1HpAtEnd = state.p1Hp;
-            oppHpAtEnd = state.oppHp;
-
-            // Detecta fim de luta por HP
-            if (!fightEnded) {
-                if (state.oppHp <= 0 && state.p1Hp > 20) {
-                    onFightEnd(true);
-                    return;
-                }
-                if (state.p1Hp <= 0 && state.oppHp > 20) {
-                    onFightEnd(false);
-                    return;
-                }
-            }
-
-            if (fightEnded) {
-                return;
-            }
-
             // Conta acertos
             if (state.hitFlash) {
-                int hits = prefs.getInt(KEY_HITS, 0) + 1;
-                prefs.edit().putInt(KEY_HITS, hits).apply();
                 consecutiveHits++;
-                if (consecutiveHits >= 2) {
-                    int combos = prefs.getInt(KEY_COMBOS, 0) + 1;
-                    prefs.edit().putInt(KEY_COMBOS, combos).apply();
-                    addPoints(10);
-                }
-                addPoints(5);
             } else {
                 consecutiveHits = 0;
             }
 
-            // Recompensa
+            // Recompensa densa
             double reward = 0;
             if (lastState != null && lastActionIndex >= 0) {
                 int dmgDealt = lastState.oppHp - state.oppHp;
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-                if (dmgDealt > 0) addPoints(dmgDealt);
-                if (dmgTaken > 0) addPoints(-dmgTaken);
-                if (lastActionIndex == 8 && dmgTaken == 0 && state.motion > 5) {
-                    int blocks = prefs.getInt(KEY_BLOCKS, 0) + 1;
-                    prefs.edit().putInt(KEY_BLOCKS, blocks).apply();
-                    addPoints(3);
-                }
-                if (lastActionIndex == lastActionIndex && lastActionIndex >= 0) {
+
+                // Penalidade por repetir a mesma acao 3+ vezes
+                if (lastActionIndex == actionIdxAnterior()) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
                 }
+
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -410,6 +210,10 @@ public class BotService extends AccessibilityService {
             lastState = state;
             lastActionIndex = actionIdx;
 
+            // Salvar Q-table a cada 100 frames
+            saveCounter++;
+            if (saveCounter % 100 == 0) saveQTable();
+
         } catch (Exception e) {
             Log.e(TAG, "Erro em processFrame", e);
         } finally {
@@ -417,70 +221,9 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    // ============ FIM DE LUTA ============
-
-    private void addPoints(int amount) {
-        int points = prefs.getInt(KEY_POINTS, 0) + amount;
-        prefs.edit().putInt(KEY_POINTS, points).apply();
+    private int actionIdxAnterior() {
+        return lastActionIndex;
     }
-
-    private void onFightEnd(boolean win) {
-        if (fightEnded) return;
-        fightEnded = true;
-
-        int fights = prefs.getInt(KEY_FIGHTS, 0) + 1;
-        int wins   = prefs.getInt(KEY_WINS,    0);
-        int losses = prefs.getInt(KEY_LOSSES, 0);
-        if (win) { wins++; addPoints(100); }
-        else { losses++; addPoints(-50); }
-        prefs.edit()
-            .putInt(KEY_FIGHTS, fights)
-            .putInt(KEY_WINS, wins)
-            .putInt(KEY_LOSSES, losses)
-            .apply();
-
-        double terminal = win ? 50.0 : -100.0;
-        if (lastState != null && lastActionIndex >= 0) {
-            int idx = brain.discretizeState(lastState, lastActionIndex);
-            brain.update(idx, lastActionIndex, terminal, idx);
-        }
-        brain.onFightEnd();
-        saveQTable();
-        Log.i(TAG, "Luta fim win=" + win + " total=" + fights +
-              " epsilon=" + String.format("%.3f", brain.getCurrentEpsilon()));
-
-        if (win) {
-            doingFatality = true;
-            mainHandler.postDelayed(() -> doFatality(), 1500);
-            int fatalities = prefs.getInt(KEY_FATALITIES, 0) + 1;
-            prefs.edit().putInt(KEY_FATALITIES, fatalities).apply();
-            addPoints(30);
-        }
-
-        // Para de jogar apos fim de luta (usuario precisa apertar PLAY de novo)
-        mainHandler.postDelayed(() -> {
-            manualPlay = false;
-            fightEnded = false;
-            doingFatality = false;
-            lastState = null;
-            lastActionIndex = -1;
-            repeatActionCount = 0;
-            consecutiveHits = 0;
-            pausedFrames = 0;
-            brain.resetLastAction();
-            updatePlayButton();
-            Log.i(TAG, "Luta acabou. Aperte PLAY para proxima.");
-        }, 2000);
-    }
-
-    private void doFatality() {
-        Log.i(TAG, "Tentando fatality");
-        tap(BTN_FWD_X, BTN_FWD_Y, 70);
-        mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 70), 300);
-        mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 600);
-    }
-
-    // ============ TOQUES ============
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
@@ -515,8 +258,6 @@ public class BotService extends AccessibilityService {
             new GestureDescription.StrokeDescription(p, 0, durationMs);
         dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
     }
-
-    // ============ PERSISTENCIA ============
 
     private void saveQTable() {
         prefs.edit().putString(KEY_QTABLE, gson.toJson(brain.getQTable())).apply();
