@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="32dp"
+    android:gravity="center">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="MK Bot"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:paddingBottom="32dp" />
+
+    <TextView
+        android:id="@+id/txtLoginTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/enter_pin"
+        android:textSize="16sp"
+        android:paddingBottom="16dp" />
+
+    <EditText
+        android:id="@+id/edtPin"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:inputType="numberPassword"
+        android:maxLength="4"
+        android:textAlignment="center"
+        android:textSize="20sp"
+        android:paddingBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnEnter"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:text="@string/enter"
+        android:padding="12dp" />
+
+    <TextView
+        android:id="@+id/txtLoginError"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#F44336"
+        android:textSize="14sp"
+        android:paddingTop="16dp"
+        android:visibility="gone" />
+
+</LinearLayout>
