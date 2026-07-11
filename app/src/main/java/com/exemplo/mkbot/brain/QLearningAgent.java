@@ -5,12 +5,12 @@ import com.exemplo.mkbot.vision.GameDetector.GameState;
 import java.util.Random;
 
 /**
- * Q-Learning agent com arsenal do Scorpion.
+ * Q-Learning agent com arsenal do Scorpion + pulos direcionais.
  *
  * Estado: (faixa HP P1, faixa HP opp, faixa movimento, ultima acao)
- *   5 x 5 x 3 x 17 = 1275 estados
+ *   5 x 5 x 3 x 19 = 1425 estados
  *
- * Acoes (17):
+ * Acoes (19):
  *   0  Attack 1 (Quadrado)
  *   1  Attack 2 (Triangulo)
  *   2  Attack 3 (X/Cross)
@@ -19,26 +19,28 @@ import java.util.Random;
  *   5  Avancar (Direita)
  *   6  Pular (Cima)
  *   7  Agachar (Baixo)
- *   8  Block (R2 - segurar)
- *   9  Throw (R2 normal)
+ *   8  Block (R2 - segurar 250ms)
+ *   9  Especial (R1)
  *   10 Pegar arma (L1)
  *   11 Idle
- *   12 Bloody Spear (Back, Fwd + A1) - puxar
- *   13 Hellfire (Down, Back + A2) - fogo no chao
- *   14 Backflip Kick (Fwd, Back + A3) - anti-aereo
- *   15 Hellfire Punch (Fwd, Back + A4) - teleporte
- *   16 Triple Combo (A2, A2, A3) - combo 3 hits
+ *   12 Bloody Spear (Back, Fwd + A1)
+ *   13 Hellfire (Down, Back + A2)
+ *   14 Backflip Kick (Fwd, Back + A3)
+ *   15 Hellfire Punch (Fwd, Back + A4)
+ *   16 Triple Combo (A2, A2, A3)
+ *   17 Pulo Esquerda
+ *   18 Pulo Direita
  */
 public class QLearningAgent {
 
     private static final int N_HP_BINS = 5;
     private static final int N_MOTION_BINS = 3;
-    private static final int N_ACTIONS = 17;
+    private static final int N_ACTIONS = 19;
     private static final int N_STATES = N_HP_BINS * N_HP_BINS * N_MOTION_BINS * N_ACTIONS;
 
     private static final double ALPHA = 0.15;
     private static final double GAMMA = 0.95;
-    private static final double EPSILON_START = 0.4;     // mais exploracao
+    private static final double EPSILON_START = 0.4;
     private static final double EPSILON_MIN = 0.05;
     private static final long DECAY_INTERVAL_MS = 300000;
     private static final double DECAY_FACTOR = 0.95;
