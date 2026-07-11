@@ -42,8 +42,6 @@ public class BotService extends AccessibilityService {
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
 
-    // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
-    // R2 = Block, R1 = Especial, L1 = Pegar armas
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
     private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
@@ -55,7 +53,6 @@ public class BotService extends AccessibilityService {
     private static final float BTN_R2_X = 0.858f, BTN_R2_Y = 0.218f;
     private static final float BTN_R1_X = 0.858f, BTN_R1_Y = 0.331f;
     private static final float BTN_L1_X = 0.146f, BTN_L1_Y = 0.331f;
-    // Pulos direcionais (novo)
     private static final float BTN_JUMPLEFT_X = 0.082f, BTN_JUMPLEFT_Y = 0.639f;
     private static final float BTN_JUMPRIGHT_X = 0.200f, BTN_JUMPRIGHT_Y = 0.635f;
 
@@ -100,8 +97,6 @@ public class BotService extends AccessibilityService {
         Log.i(TAG, "BotService conectado.");
     }
 
-    // ============ BOTOES DE VOLUME ============
-
     @Override
     public boolean onKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
@@ -113,7 +108,6 @@ public class BotService extends AccessibilityService {
                 volUpHoldRunnable = () -> {
                     volUpHolding = true;
                     setPlayMode(true);
-                    Log.i(TAG, "Volume+ segurado 3s - BOT JOGANDO");
                 };
                 mainHandler.postDelayed(volUpHoldRunnable, 3000);
                 return true;
@@ -136,7 +130,6 @@ public class BotService extends AccessibilityService {
                 volDownHoldRunnable = () -> {
                     volDownHolding = true;
                     setPlayMode(false);
-                    Log.i(TAG, "Volume- segurado 3s - BOT PARADO");
                 };
                 mainHandler.postDelayed(volDownHoldRunnable, 3000);
                 return true;
@@ -182,8 +175,6 @@ public class BotService extends AccessibilityService {
         BackupManager.save(this, prefs);
     }
 
-    // ============ EVENTOS DE ACESSIBILIDADE ============
-
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
@@ -199,8 +190,6 @@ public class BotService extends AccessibilityService {
     public void onInterrupt() {
         stopLoop();
     }
-
-    // ============ LOOP ============
 
     private void startLoop() {
         if (loopRunning) return;
@@ -233,7 +222,6 @@ public class BotService extends AccessibilityService {
                     }
                     @Override
                     public void onFailure(int code) {
-                        Log.w(TAG, "takeScreenshot falhou: code=" + code);
                     }
                 });
             mainHandler.postDelayed(this, LOOP_INTERVAL_MS);
@@ -252,12 +240,9 @@ public class BotService extends AccessibilityService {
             hw.recycle();
             return soft;
         } catch (Exception e) {
-            Log.e(TAG, "screenshotToBitmap failed", e);
             return null;
         }
     }
-
-    // ============ PROCESSAMENTO ============
 
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
@@ -290,12 +275,10 @@ public class BotService extends AccessibilityService {
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-
-                if (lastActionIndex == actionIdxAnterior()) {
+                if (lastActionIndex == lastActionIndex) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
                 }
-
                 if (dmgDealt == 0 && dmgTaken == 0 && !state.hitFlash) reward = -0.1;
             }
 
@@ -325,78 +308,104 @@ public class BotService extends AccessibilityService {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Erro em processFrame", e);
         } finally {
             frame.recycle();
         }
     }
 
-    private int actionIdxAnterior() {
-        return lastActionIndex;
-    }
-
-    // ============ TOQUES - ARSENAL COMPLETO ============
-
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
-            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;              // Quadrado
-            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;              // Triangulo
-            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;              // X/Cross
-            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;              // Circulo
-            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;          // Recuar
-            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;            // Avancar
-            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;              // Pular (Cima)
-            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;          // Agachar
-            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 250); break;      // Block (R2 - 250ms)
-            case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;      // Especial (R1)
-            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;     // Pegar arma (L1)
-            case 11: break;                                          // Idle
-            // Arsenal do Scorpion
-            case 12: scorpionBloodySpear(); break;     // Back, Fwd + A1
-            case 13: scorpionHellfire(); break;        // Down, Back + A2
-            case 14: scorpionBackflipKick(); break;    // Fwd, Back + A3
-            case 15: scorpionHellfirePunch(); break;   // Fwd, Back + A4
-            case 16: scorpionTripleCombo(); break;     // A2, A2, A3
-            // Pulos direcionais (novo)
-            case 17: tap(BTN_JUMPLEFT_X, BTN_JUMPLEFT_Y, 70); break;  // Pulo Esq
-            case 18: tap(BTN_JUMPRIGHT_X, BTN_JUMPRIGHT_Y, 70); break;// Pulo Dir
+            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
+            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
+            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
+            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;
+            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;
+            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
+            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
+            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
+            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 250); break;
+            case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;
+            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
+            case 11: break;
+            case 12: scorpionBloodySpear(); break;
+            case 13: scorpionHellfire(); break;
+            case 14: scorpionBackflipKick(); break;
+            case 15: scorpionHellfirePunch(); break;
+            case 16: scorpionTripleCombo(); break;
+            case 17: tap(BTN_JUMPLEFT_X, BTN_JUMPLEFT_Y, 70); break;
+            case 18: tap(BTN_JUMPRIGHT_X, BTN_JUMPRIGHT_Y, 70); break;
+            case 19: airComboSimple(); break;
+            case 20: airComboAdvanced(); break;
+            case 21: parryCounter(); break;
+            case 22: sidestepUp(); break;
+            case 23: sidestepDown(); break;
             default: break;
         }
     }
 
-    // Bloody Spear: Back, Forward + A1
     private void scorpionBloodySpear() {
         tap(BTN_BACK_X, BTN_BACK_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
     }
 
-    // Hellfire: Down, Back + A2
     private void scorpionHellfire() {
         tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
     }
 
-    // Backflip Kick: Forward, Back + A3
     private void scorpionBackflipKick() {
         tap(BTN_FWD_X, BTN_FWD_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
     }
 
-    // Hellfire Punch: Forward, Back + A4
     private void scorpionHellfirePunch() {
         tap(BTN_FWD_X, BTN_FWD_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
     }
 
-    // Triple Combo: A2, A2, A3
     private void scorpionTripleCombo() {
         tap(BTN_A2_X, BTN_A2_Y, 70);
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 150);
         mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 300);
+    }
+
+    // Air Combo Simples: Launcher (R1) + Pular + A1, A2 no ar
+    private void airComboSimple() {
+        holdButton(BTN_R1_X, BTN_R1_Y, 250);
+        mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 70), 300);
+        mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 500);
+        mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 650);
+    }
+
+    // Air Combo Avancado: Launcher (R1) + Pular + L1 (air cancel) + A1, A2
+    private void airComboAdvanced() {
+        holdButton(BTN_R1_X, BTN_R1_Y, 250);
+        mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 70), 300);
+        mainHandler.postDelayed(() -> holdButton(BTN_L1_X, BTN_L1_Y, 100), 500);
+        mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 650);
+        mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 800);
+    }
+
+    // Parry: Back + Block (contra-ataque)
+    private void parryCounter() {
+        tap(BTN_BACK_X, BTN_BACK_Y, 60);
+        mainHandler.postDelayed(() -> holdButton(BTN_R2_X, BTN_R2_Y, 200), 50);
+    }
+
+    // Sidestep Up: Up, Up rapido (esquiva lateral)
+    private void sidestepUp() {
+        tap(BTN_UP_X, BTN_UP_Y, 50);
+        mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 50), 60);
+    }
+
+    // Sidestep Down: Down, Down rapido (esquiva lateral baixa)
+    private void sidestepDown() {
+        tap(BTN_DOWN_X, BTN_DOWN_Y, 50);
+        mainHandler.postDelayed(() -> tap(BTN_DOWN_X, BTN_DOWN_Y, 50), 60);
     }
 
     private void tap(float fx, float fy, long durationMs) {
@@ -415,8 +424,6 @@ public class BotService extends AccessibilityService {
         dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
     }
 
-    // ============ PERSISTENCIA ============
-
     private void saveQTable() {
         prefs.edit().putString(KEY_QTABLE, gson.toJson(brain.getQTable())).apply();
     }
@@ -428,7 +435,6 @@ public class BotService extends AccessibilityService {
             float[][] loaded = gson.fromJson(json, float[][].class);
             if (loaded != null) brain.setQTable(loaded);
         } catch (Exception e) {
-            Log.w(TAG, "Q-table invalida.");
         }
     }
 }
