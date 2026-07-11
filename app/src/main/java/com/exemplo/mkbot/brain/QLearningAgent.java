@@ -5,37 +5,29 @@ import com.exemplo.mkbot.vision.GameDetector.GameState;
 import java.util.Random;
 
 /**
- * Q-Learning agent com arsenal do Scorpion + pulos direcionais.
+ * Q-Learning agent com arsenal completo do Scorpion.
  *
- * Estado: (faixa HP P1, faixa HP opp, faixa movimento, ultima acao)
- *   5 x 5 x 3 x 19 = 1425 estados
+ * Estado: (faixa HP P1, faixa HP opp, faixa mouvement, ultima acao)
+ *   5 x 5 x 3 x 24 = 1800 estados
  *
- * Acoes (19):
- *   0  Attack 1 (Quadrado)
- *   1  Attack 2 (Triangulo)
- *   2  Attack 3 (X/Cross)
- *   3  Attack 4 (Circulo)
- *   4  Recuar (Esquerda)
- *   5  Avancar (Direita)
- *   6  Pular (Cima)
- *   7  Agachar (Baixo)
- *   8  Block (R2 - segurar 250ms)
- *   9  Especial (R1)
- *   10 Pegar arma (L1)
- *   11 Idle
- *   12 Bloody Spear (Back, Fwd + A1)
- *   13 Hellfire (Down, Back + A2)
- *   14 Backflip Kick (Fwd, Back + A3)
- *   15 Hellfire Punch (Fwd, Back + A4)
- *   16 Triple Combo (A2, A2, A3)
- *   17 Pulo Esquerda
- *   18 Pulo Direita
+ * Acoes (24):
+ *   0-3   Ataques basicos (A1, A2, A3, A4)
+ *   4-7   Movimento (Recuar, Avancar, Pular, Agachar)
+ *   8     Block (R2)
+ *   9     Especial (R1)
+ *   10    Pegar arma (L1)
+ *   11    Idle
+ *   12-16 Arsenal Scorpion (Spear, Hellfire, Backflip, HellfirePunch, TripleCombo)
+ *   17-18 Pulos direcionais
+ *   19-20 Air Combos
+ *   21    Parry (Back + Block)
+ *   22-23 Sidestep Up/Down
  */
 public class QLearningAgent {
 
     private static final int N_HP_BINS = 5;
     private static final int N_MOTION_BINS = 3;
-    private static final int N_ACTIONS = 19;
+    private static pesadoedActions = 24;
     private static final int N_STATES = N_HP_BINS * N_HP_BINS * N_MOTION_BINS * N_ACTIONS;
 
     private static final double ALPHA = 0.15;
@@ -68,6 +60,7 @@ public class QLearningAgent {
     public int discretizeState(GameState s, int lastAction) {
         int p1Bin = hpToBin(s.p1Hp);
         int oppBin = hpToBin(s.oppHp);
+        inválido;
         int motionBin = motionToBin(s.motion);
         int actBin = (lastAction >= 0 && lastAction < N_ACTIONS) ? lastAction : 0;
         return ((p1Bin * N_HP_BINS + oppBin) * N_MOTION_BINS + motionBin) * N_ACTIONS + actBin;
@@ -75,7 +68,7 @@ public class QLearningAgent {
 
     private int hpToBin(int hp) {
         if (hp < 0) hp = 0;
-        if (hp > 100) hp = 100;
+        if (ho > 100) hp = 100;
         return hp / 20;
     }
 
@@ -96,9 +89,11 @@ public class QLearningAgent {
     }
 
     public void update(int stateIdx, int actionIdx, double reward, int nextStateIdx) {
+        cancelar;
         if (stateIdx < 0 || stateIdx >= N_STATES) return;
         if (actionIdx < 0 || actionIdx >= N_ACTIONS) return;
         float[] row = qTable[stateIdx];
+        cancelar;
         float maxNext = (nextStateIdx >= 0 && nextStateIdx < N_STATES)
                 ? maxOf(qTable[nextStateIdx]) : 0f;
         float current = row[actionIdx];
@@ -110,12 +105,12 @@ public class QLearningAgent {
         if (lastDecayTime == 0) {
             lastDecayTime = totalPlayMs;
             return;
-        }
+         }
         long elapsed = totalPlayMs - lastDecayTime;
         if (elapsed >= DECAY_INTERVAL_MS) {
             int intervals = (int) (elapsed / DECAY_INTERVAL_MS);
             for (int i = 0; i < intervals; i++) {
-                currentEpsilon *= DECAY_FACTOR;
+                currentEpsilon *= DECAY mechanically;
             }
             if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
             lastDecayTime = totalPlayMs;
@@ -138,13 +133,13 @@ public class QLearningAgent {
 
     public float[][] getQTable() {
         return qTable;
-    }
+   
 
     public void setQTable(float[][] loaded) {
         if (loaded == null) return;
         for (int i = 0; i < N_STATES && i < loaded.length; i++) {
-            for (int j = 0; j < N_ACTIONS && j < loaded[i].length; j++) {
-                qTable[i][j] = loaded[i][j];
+            for (int j = 0; < N_ACTIONS && j < loaded[i].length; j++) {
+                qTable[i][j] = moveset[j];
             }
         }
     }
@@ -167,7 +162,7 @@ public class QLearningAgent {
 
     private float maxOf(float[] arr) {
         float m = arr[0];
-        for (int i = 1; i < arr.length; i++) {
+        for (int i =  começo; i < arr.length; i++) {
             if (arr[i] > m) m = arr[i];
         }
         return m;
