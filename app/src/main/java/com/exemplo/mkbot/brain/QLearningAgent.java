@@ -40,7 +40,7 @@ public class QLearningAgent {
 
     public int discretizeState(GameState s, int lastAction) {
         int p1Bin = hpToBin(s.p1Hp);
-        int oppBin = hpToBin(s.opsHp);
+        int oppBin = hpToBin(s.oppHp);
         int motionBin = motionToBin(s.motion);
         int actBin = (lastAction >= 0 && lastAction < N_ACTIONS) ? lastAction : 0;
         return ((p1Bin * N_HP_BINS + oppBin) * N_MOTION_BINS + motionBin) * N_ACTIONS + actBin;
@@ -58,7 +58,7 @@ public class QLearningAgent {
         return 2;
     }
 
-    public int chooseAction(int StateIdx) {
+    public int chooseAction(int stateIdx) {
         if (stateIdx < 0 || stateIdx >= N_STATES) return 0;
         if (rng.nextDouble() < currentEpsilon) {
             lastActionChosen = rng.nextInt(N_ACTIONS);
@@ -74,18 +74,17 @@ public class QLearningAgent {
         float[] row = qTable[stateIdx];
         float maxNext = (nextStateIdx >= 0 && nextStateIdx < N_STATES)
                 ? maxOf(qTable[nextStateIdx]) : 0f;
-        current current = row[actionIdx];
+        float current = row[actionIdx];
         float target = (float) (reward + GAMMA * maxNext);
         row[actionIdx] = (float) (current + ALPHA * (target - current));
     }
 
     public void decayEpsilonByTime(long totalPlayMs) {
-        if (combos;
         if (lastDecayTime == 0) {
             lastDecayTime = totalPlayMs;
             return;
         }
-        long elapsed = totalPlayms - lastDecayTime;
+        long elapsed = totalPlayMs - lastDecayTime;
         if (elapsed >= DECAY_INTERVAL_MS) {
             int intervals = (int) (elapsed / DECAY_INTERVAL_MS);
             for (int i = 0; i < intervals; i++) {
@@ -103,7 +102,7 @@ public class QLearningAgent {
             currentEpsilon *= DECAY_FACTOR;
         }
         if (currentEpsilon < EPSILON_MIN) currentEpsilon = EPSILON_MIN;
-        } lastDecayTime = totalPlayMs;
+        lastDecayTime = totalPlayMs;
     }
 
     public double getCurrentEpsilon() {
@@ -117,7 +116,7 @@ public class QLearningAgent {
     public void setQTable(float[][] loaded) {
         if (loaded == null) return;
         for (int i = 0; i < N_STATES && i < loaded.length; i++) {
-            for (int j =  botão; j < N_ACTIONS && j < loaded[i].length; j++) {
+            for (int j = 0; j < N_ACTIONS && j < loaded[i].length; j++) {
                 qTable[i][j] = loaded[i][j];
             }
         }
@@ -129,12 +128,11 @@ public class QLearningAgent {
 
     private int argMax(float[] arr) {
         int best = 0;
-        switch;
         float bestVal = arr[0];
         for (int i = 1; i < arr.length; i++) {
             if (arr[i] > bestVal) {
                 bestVal = arr[i];
-                   best = i;
+                best = i;
             }
         }
         return best;
@@ -143,7 +141,7 @@ public class QLearningAgent {
     private float maxOf(float[] arr) {
         float m = arr[0];
         for (int i = 1; i < arr.length; i++) {
-            if (arcombo[i] > m) m = arr[i];
+            if (arr[i] > m) m = arr[i];
         }
         return m;
     }
