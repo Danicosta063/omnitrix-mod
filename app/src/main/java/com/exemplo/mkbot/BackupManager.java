@@ -19,12 +19,7 @@ public class BackupManager {
 
     private static final String TAG = "MKBot";
     private static final String BACKUP_FILE = "mkbot_progress.json";
-    private static final String KEY_QTABLE = "qtable";
-    private static final String KEY_FIGHTS = "fights";
-    private static final String KEY_TOTAL_PLAY = "totalPlay";
 
-    // Verifica se a pasta tem o arquivo de progresso
-    // Se tem, carrega. Se nao tem, cria vazio.
     public static String checkAndLoad(Context ctx, SharedPreferences prefs) {
         String uriStr = prefs.getString("folderUri", null);
         if (uriStr == null) return "Nenhuma pasta selecionada";
@@ -37,7 +32,6 @@ public class BackupManager {
 
         DocumentFile file = tree.findFile(BACKUP_FILE);
         if (file != null && file.exists()) {
-            // Arquivo existe - carregar progresso
             String json = readFile(ctx, file);
             if (json != null) {
                 parseAndApply(json, prefs);
@@ -46,7 +40,6 @@ public class BackupManager {
             }
             return "Arquivo encontrado mas vazio";
         } else {
-            // Arquivo nao existe - criar
             boolean created = createFile(ctx, tree);
             if (created) {
                 Log.i(TAG, "Arquivo de progresso criado");
@@ -56,7 +49,6 @@ public class BackupManager {
         }
     }
 
-    // Salva o progresso atual no arquivo
     public static void save(Context ctx, SharedPreferences prefs) {
         String uriStr = prefs.getString("folderUri", null);
         if (uriStr == null) return;
@@ -73,10 +65,8 @@ public class BackupManager {
 
         String json = buildJson(prefs);
         writeFile(ctx, file, json);
-        Log.i(TAG, "Progresso salvo no arquivo");
     }
 
-    // Le o JSON do arquivo
     private static String readFile(Context ctx, DocumentFile file) {
         try {
             InputStream is = ctx.getContentResolver().openInputStream(file.getUri());
@@ -96,7 +86,6 @@ public class BackupManager {
         }
     }
 
-    // Escreve JSON no arquivo
     private static void writeFile(Context ctx, DocumentFile file, String json) {
         try {
             OutputStream os = ctx.getContentResolver().openOutputStream(file.getUri());
@@ -111,13 +100,11 @@ public class BackupManager {
         }
     }
 
-    // Cria o arquivo vazio
     private static boolean createFile(Context ctx, DocumentFile tree) {
         try {
             DocumentFile file = tree.createFile("application/json", BACKUP_FILE);
             if (file != null) {
-                // Escreve JSON inicial vazio
-                String initial = "{\"qtable\":\"\",\"fights\":0,\"totalPlay\":0}";
+                String initial = buildEmptyJson();
                 writeFile(ctx, file, initial);
                 return true;
             }
@@ -128,17 +115,28 @@ public class BackupManager {
         }
     }
 
-    // Monta o JSON a partir dos SharedPreferences
-    private static String buildJson(SharedPreferences prefs) {
+    private static String buildEmptyJson() {
         Gson gson = new Gson();
         BackupData data = new BackupData();
-        data.qtable = prefs.getString(KEY_QTABLE, "");
-        data.fights = prefs.getInt(KEY_FIGHTS, 0);
-        data.totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0);
+        data.qtable = "";
+        data.totalPlay = 0;
+        data.currentChar = "Ashrah";
+        data.charTime_Ashrah = 0;
+        data.charTime_Scorpion = 0;
         return gson.toJson(data);
     }
 
-    // Aplica o JSON carregado nos SharedPreferences
+    private static String buildJson(SharedPreferences prefs) {
+        Gson gson = new Gson();
+        BackupData data = new BackupData();
+        data.qtable = prefs.getString("qtable", "");
+        data.totalPlay = prefs.getLong("totalPlay", 0);
+        data.currentChar = prefs.getString("currentChar", "Ashrah");
+        data.charTime_Ashrah = prefs.getLong("charTime_Ashrah", 0);
+        data.charTime_Scorpion = prefs.getLong("charTime_Scorpion", 0);
+        return gson.toJson(data);
+    }
+
     private static void parseAndApply(String json, SharedPreferences prefs) {
         try {
             Gson gson = new Gson();
@@ -146,17 +144,20 @@ public class BackupManager {
             if (data == null) return;
             SharedPreferences.Editor ed = prefs.edit();
             if (data.qtable != null && !data.qtable.isEmpty()) {
-                ed.putString(KEY_QTABLE, data.qtable);
+                ed.putString("qtable", data.qtable);
             }
-            ed.putInt(KEY_FIGHTS, data.fights);
-            ed.putLong(KEY_TOTAL_PLAY, data.totalPlay);
+            ed.putLong("totalPlay", data.totalPlay);
+            if (data.currentChar != null) {
+                ed.putString("currentChar", data.currentChar);
+            }
+            ed.putLong("charTime_Ashrah", data.charTime_Ashrah);
+            ed.putLong("charTime_Scorpion", data.charTime_Scorpion);
             ed.apply();
         } catch (Exception e) {
             Log.e(TAG, "Erro ao parsear backup", e);
         }
     }
 
-    // Pega o nome da pasta pra mostrar na UI
     public static String getFolderName(Context ctx, Uri treeUri) {
         DocumentFile tree = DocumentFile.fromTreeUri(ctx, treeUri);
         if (tree != null && tree.getName() != null) {
@@ -167,7 +168,9 @@ public class BackupManager {
 
     private static class BackupData {
         String qtable;
-        int fights;
         long totalPlay;
+        String currentChar;
+        long charTime_Ashrah;
+        long charTime_Scorpion;
     }
 }
