@@ -1,20 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">MK Bot</string>
-    <string name="accessibility_description">
-        Bot de aprendizado por reforço para Mortal Kombat Armageddon.
-        Captura a tela, detecta barras de vida e resultados, e simula toques
-        para jogar automaticamente. Necessário para acessibilidade para poder
-        ler a tela e tocar nela.
-    </string>
-    <string name="enable_accessibility">Permitir Acessibilidade</string>
-    <string name="activate_bot">Ativar Bot</string>
-    <string name="deactivate_bot">Desativar Bot</string>
+    <string name="app_name">MKBot</string>
+    <string name="accessibility_description">Bot de aprendizado por reforço para Mortal Kombat Armageddon. Captura a tela, detecta barras de vida e resultados, e simula toques para jogar automaticamente.</string>
+    <string name="select_folder">SELECIONAR PASTA DE MEMÓRIA</string>
+    <string name="enable_accessibility">PERMITIR ACESSIBILIDADE</string>
+    <string name="activate_bot">ATIVAR BOT</string>
+    <string name="deactivate_bot">DESATIVAR BOT</string>
     <string name="bot_inactive">Bot Desativado</string>
-    <string name="select_folder">Selecionar Pasta de Memória</string>
-    <string name="folder_selected">Pasta selecionada: %1$s</string>
+    <string name="character_label">Personagem</string>
     <string name="folder_not_selected">Nenhuma pasta selecionada</string>
-    <string name="progress_loaded">Progresso carregado do arquivo</string>
-    <string name="progress_created">Arquivo de progresso criado</string>
-    <string name="hold_hint">Segure Volume+ por 3s para jogar\nSegure Volume- por 3s para parar\nToque rápido muda o volume normal</string>
+    <string name="folder_selected">Pasta: %1$s</string>
+    <string name="hint">Clique Volume+ para jogar · Clique Volume- para parar</string>
 </resources>
