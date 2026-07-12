@@ -42,6 +42,7 @@ public class BotService extends AccessibilityService {
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
 
+    // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
     private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
@@ -302,7 +303,7 @@ public class BotService extends AccessibilityService {
             lastActionIndex = actionIdx;
 
             saveCounter++;
-            if (saveCounter % 100 == 0) {
+            if (saveCounter % 50 == 0) {
                 saveQTable();
                 BackupManager.save(this, prefs);
             }
@@ -313,8 +314,11 @@ public class BotService extends AccessibilityService {
         }
     }
 
+    // ============ ARSENAL DA ASHRAH ============
+
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
+            // Acoes universais (0-11) - funcionam pra qualquer personagem
             case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
             case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
             case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
@@ -327,11 +331,12 @@ public class BotService extends AccessibilityService {
             case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;
             case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
             case 11: break;
-            case 12: scorpionBloodySpear(); break;
-            case 13: scorpionHellfire(); break;
-            case 14: scorpionBackflipKick(); break;
-            case 15: scorpionHellfirePunch(); break;
-            case 16: scorpionTripleCombo(); break;
+            // Specials da Ashrah (12-23)
+            case 12: ashrahHeavenlyLight(); break;    // Down, Back + A1
+            case 13: ashrahLightningBlast(); break;    // Down, Forward + A1
+            case 14: ashrahSpinCycle(); break;         // Down, Up + A3
+            case 15: ashrahNaturesTorpedo(); break;    // Forward, Forward + A4
+            case 16: ashrahTripleCombo(); break;       // A2, A2, A3
             case 17: tap(BTN_JUMPLEFT_X, BTN_JUMPLEFT_Y, 70); break;
             case 18: tap(BTN_JUMPRIGHT_X, BTN_JUMPRIGHT_Y, 70); break;
             case 19: airComboSimple(); break;
@@ -343,31 +348,36 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    private void scorpionBloodySpear() {
-        tap(BTN_BACK_X, BTN_BACK_Y, 60);
+    // Heavenly Light: Down, Back + A1 (projétil de luz)
+    private void ashrahHeavenlyLight() {
+        tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
+        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+        mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+    }
+
+    // Lightning Blast: Down, Forward + A1 (raio)
+    private void ashrahLightningBlast() {
+        tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
         mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
     }
 
-    private void scorpionHellfire() {
+    // Spin Cycle: Down, Up + A3 (giro anti-aéreo)
+    private void ashrahSpinCycle() {
         tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
-        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
-        mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
-    }
-
-    private void scorpionBackflipKick() {
-        tap(BTN_FWD_X, BTN_FWD_Y, 60);
-        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+        mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
     }
 
-    private void scorpionHellfirePunch() {
+    // Nature's Torpedo: Forward, Forward + A4 (investida voadora)
+    private void ashrahNaturesTorpedo() {
         tap(BTN_FWD_X, BTN_FWD_Y, 60);
-        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+        mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
         mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
     }
 
-    private void scorpionTripleCombo() {
+    // Triple Combo: A2, A2, A3
+    private void ashrahTripleCombo() {
         tap(BTN_A2_X, BTN_A2_Y, 70);
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 150);
         mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 300);
