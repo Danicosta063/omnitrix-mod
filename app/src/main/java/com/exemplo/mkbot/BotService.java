@@ -11,7 +11,6 @@ import android.graphics.Bitmap;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
 import android.hardware.HardwareBuffer;
-import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -37,12 +36,11 @@ public class BotService extends AccessibilityService {
     private static final String KEY_PLAY_START = "playStart";
     private static final String KEY_TOTAL_PLAY = "totalPlay";
     private static final String KEY_QTABLE = "qtable";
-    private static final String KEY_FIGHTS = "fights";
+    private static final String KEY_CURRENT_CHAR = "currentChar";
 
     private static final String EMULATOR_PKG = "xyz.aethersx2.android";
     private static final long LOOP_INTERVAL_MS = 120;
 
-    // Coordenadas calibradas pro Samsung S21 (2400x1080 landscape)
     private static final float BTN_A1_X = 0.807f, BTN_A1_Y = 0.727f;
     private static final float BTN_A2_X = 0.875f, BTN_A2_Y = 0.583f;
     private static final float BTN_A3_X = 0.858f, BTN_A3_Y = 0.861f;
@@ -63,11 +61,7 @@ public class BotService extends AccessibilityService {
     private Gson gson;
     private QLearningAgent brain;
     private GameDetector detector;
-
-    private boolean volUpHolding = false;
-    private boolean volDownHolding = false;
-    private Runnable volUpHoldRunnable;
-    private Runnable volDownHoldRunnable;
+    private String currentCharacter = "Ashrah";
 
     private boolean loopRunning = false;
     private int lastActionIndex = -1;
@@ -89,6 +83,7 @@ public class BotService extends AccessibilityService {
         loadQTable();
         long totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0);
         brain.restoreEpsilonByTime(totalPlay);
+        currentCharacter = prefs.getString(KEY_CURRENT_CHAR, "Ashrah");
 
         AccessibilityServiceInfo info = getServiceInfo();
         if (info != null) {
@@ -98,71 +93,43 @@ public class BotService extends AccessibilityService {
         Log.i(TAG, "BotService conectado.");
     }
 
+    // ============ BOTOES DE VOLUME - CLIQUE UNICO ============
+
     @Override
     public boolean onKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
         int action = event.getAction();
 
+        // Volume+ com 1 clique = JOGAR
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (action == KeyEvent.ACTION_DOWN) {
-                volUpHolding = false;
-                volUpHoldRunnable = () -> {
-                    volUpHolding = true;
+                if (prefs.getBoolean(KEY_RUNNING, false)) {
                     setPlayMode(true);
-                };
-                mainHandler.postDelayed(volUpHoldRunnable, 3000);
-                return true;
-            } else if (action == KeyEvent.ACTION_UP) {
-                if (volUpHoldRunnable != null) {
-                    mainHandler.removeCallbacks(volUpHoldRunnable);
-                    volUpHoldRunnable = null;
+                    Log.i(TAG, "Volume+ clicado - BOT JOGANDO");
                 }
-                if (volUpHolding) {
-                    volUpHolding = false;
-                    return true;
-                } else {
-                    adjustVolume(true);
-                    return true;
-                }
+                return true; // Consome sempre
             }
-        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            return true;
+        }
+
+        // Volume- com 1 clique = PARAR
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             if (action == KeyEvent.ACTION_DOWN) {
-                volDownHolding = false;
-                volDownHoldRunnable = () -> {
-                    volDownHolding = true;
-                    setPlayMode(false);
-                };
-                mainHandler.postDelayed(volDownHoldRunnable, 3000);
+                setPlayMode(false);
+                Log.i(TAG, "Volume- clicado - BOT PARADO");
                 return true;
-            } else if (action == KeyEvent.ACTION_UP) {
-                if (volDownHoldRunnable != null) {
-                    mainHandler.removeCallbacks(volDownHoldRunnable);
-                    volDownHoldRunnable = null;
-                }
-                if (volDownHolding) {
-                    volDownHolding = false;
-                    return true;
-                } else {
-                    adjustVolume(false);
-                    return true;
-                }
             }
+            return true;
         }
         return false;
     }
 
-    private void adjustVolume(boolean up) {
-        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
-        if (am == null) return;
-        int dir = up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER;
-        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir,
-                AudioManager.FLAG_SHOW_UI);
-    }
-
     private void setPlayMode(boolean play) {
+        currentCharacter = prefs.getString(KEY_CURRENT_CHAR, "Ashrah");
         SharedPreferences.Editor ed = prefs.edit();
         if (play) {
             ed.putLong(KEY_PLAY_START, System.currentTimeMillis());
+            ed.putLong("charStart_" + currentCharacter, System.currentTimeMillis());
         } else {
             long start = prefs.getLong(KEY_PLAY_START, 0);
             if (start > 0) {
@@ -171,26 +138,38 @@ public class BotService extends AccessibilityService {
                 ed.putLong(KEY_TOTAL_PLAY, total);
                 ed.putLong(KEY_PLAY_START, 0);
             }
+            long charStart = prefs.getLong("charStart_" + currentCharacter, 0);
+            if (charStart > 0) {
+                long charElapsed = System.currentTimeMillis() - charStart;
+                long charTotal = prefs.getLong("charTime_" + currentCharacter, 0) + charElapsed;
+                ed.putLong("charTime_" + currentCharacter, charTotal);
+                ed.putLong("charStart_" + currentCharacter, 0);
+            }
         }
         ed.putBoolean(KEY_PLAY_MODE, play).apply();
         BackupManager.save(this, prefs);
     }
+
+    // ============ EVENTOS DE ACESSIBILIDADE ============
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = event.getPackageName();
         if (EMULATOR_PKG.equals(pkg)) {
-            startLoop();
-        } else if (pkg != null && !pkg.equals("android")) {
-            stopLoop();
+            if (prefs.getBoolean(KEY_RUNNING, false)) {
+                startLoop();
+            }
         }
+        // NAO chama stopLoop aqui - previne parar no meio da luta
     }
 
     @Override
     public void onInterrupt() {
         stopLoop();
     }
+
+    // ============ LOOP ============
 
     private void startLoop() {
         if (loopRunning) return;
@@ -210,6 +189,11 @@ public class BotService extends AccessibilityService {
         @Override
         public void run() {
             if (!loopRunning) return;
+            // Se KEY_RUNNING foi desativado, para o loop
+            if (!prefs.getBoolean(KEY_RUNNING, false)) {
+                loopRunning = false;
+                return;
+            }
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
             takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(),
                 new TakeScreenshotCallback() {
@@ -245,12 +229,16 @@ public class BotService extends AccessibilityService {
         }
     }
 
+    // ============ PROCESSAMENTO ============
+
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
         if (!prefs.getBoolean(KEY_PLAY_MODE, false)) {
             frame.recycle();
             return;
         }
+
+        currentCharacter = prefs.getString(KEY_CURRENT_CHAR, "Ashrah");
 
         screenWidth = frame.getWidth();
         screenHeight = frame.getHeight();
@@ -276,7 +264,7 @@ public class BotService extends AccessibilityService {
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-                if (lastActionIndex == lastActionIndex) {
+                if (lastActionIndex == actionIdxAnterior()) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
                 }
@@ -314,11 +302,14 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    // ============ ARSENAL DA ASHRAH ============
+    private int actionIdxAnterior() {
+        return lastActionIndex;
+    }
+
+    // ============ ARSENAL POR PERSONAGEM ============
 
     private void executeAction(int actionIdx) {
         switch (actionIdx) {
-            // Acoes universais (0-11) - funcionam pra qualquer personagem
             case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
             case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
             case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
@@ -331,12 +322,11 @@ public class BotService extends AccessibilityService {
             case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;
             case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
             case 11: break;
-            // Specials da Ashrah (12-23)
-            case 12: ashrahHeavenlyLight(); break;    // Down, Back + A1
-            case 13: ashrahLightningBlast(); break;    // Down, Forward + A1
-            case 14: ashrahSpinCycle(); break;         // Down, Up + A3
-            case 15: ashrahNaturesTorpedo(); break;    // Forward, Forward + A4
-            case 16: ashrahTripleCombo(); break;       // A2, A2, A3
+            case 12: special1(); break;
+            case 13: special2(); break;
+            case 14: special3(); break;
+            case 15: special4(); break;
+            case 16: tripleCombo(); break;
             case 17: tap(BTN_JUMPLEFT_X, BTN_JUMPLEFT_Y, 70); break;
             case 18: tap(BTN_JUMPRIGHT_X, BTN_JUMPRIGHT_Y, 70); break;
             case 19: airComboSimple(); break;
@@ -348,36 +338,88 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    // Heavenly Light: Down, Back + A1 (projétil de luz)
-    private void ashrahHeavenlyLight() {
-        tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
-        mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
-        mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+    // Special 1 - muda conforme personagem
+    private void special1() {
+        if (currentCharacter.equals("Ashrah")) {
+            // Heavenly Light: Down, Back + A1
+            tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+        } else if (currentCharacter.equals("Scorpion")) {
+            // Bloody Spear: Back, Forward + A1
+            tap(BTN_BACK_X, BTN_BACK_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+        } else {
+            // Generico: Back, Forward + A1
+            tap(BTN_BACK_X, BTN_BACK_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+        }
     }
 
-    // Lightning Blast: Down, Forward + A1 (raio)
-    private void ashrahLightningBlast() {
-        tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
-        mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
-        mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+    // Special 2 - muda conforme personagem
+    private void special2() {
+        if (currentCharacter.equals("Ashrah")) {
+            // Lightning Blast: Down, Forward + A1
+            tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
+        } else if (currentCharacter.equals("Scorpion")) {
+            // Hellfire: Down, Back + A2
+            tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
+        } else {
+            // Generico: Down, Back + A2
+            tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
+        }
     }
 
-    // Spin Cycle: Down, Up + A3 (giro anti-aéreo)
-    private void ashrahSpinCycle() {
-        tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
-        mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 60), 80);
-        mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
+    // Special 3 - muda conforme personagem
+    private void special3() {
+        if (currentCharacter.equals("Ashrah")) {
+            // Spin Cycle: Down, Up + A3
+            tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
+        } else if (currentCharacter.equals("Scorpion")) {
+            // Backflip Kick: Forward, Back + A3
+            tap(BTN_FWD_X, BTN_FWD_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
+        } else {
+            // Generico: Forward, Back + A3
+            tap(BTN_FWD_X, BTN_FWD_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
+        }
     }
 
-    // Nature's Torpedo: Forward, Forward + A4 (investida voadora)
-    private void ashrahNaturesTorpedo() {
-        tap(BTN_FWD_X, BTN_FWD_Y, 60);
-        mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
-        mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
+    // Special 4 - muda conforme personagem
+    private void special4() {
+        if (currentCharacter.equals("Ashrah")) {
+            // Nature's Torpedo: Forward, Forward + A4
+            tap(BTN_FWD_X, BTN_FWD_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
+        } else if (currentCharacter.equals("Scorpion")) {
+            // Hellfire Punch: Forward, Back + A4
+            tap(BTN_FWD_X, BTN_FWD_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
+        } else {
+            // Generico: Forward, Back + A4
+            tap(BTN_FWD_X, BTN_FWD_Y, 60);
+            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
+            mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
+        }
     }
 
     // Triple Combo: A2, A2, A3
-    private void ashrahTripleCombo() {
+    private void tripleCombo() {
         tap(BTN_A2_X, BTN_A2_Y, 70);
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 150);
         mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 300);
@@ -400,19 +442,19 @@ public class BotService extends AccessibilityService {
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 800);
     }
 
-    // Parry: Back + Block (contra-ataque)
+    // Parry: Back + Block
     private void parryCounter() {
         tap(BTN_BACK_X, BTN_BACK_Y, 60);
         mainHandler.postDelayed(() -> holdButton(BTN_R2_X, BTN_R2_Y, 200), 50);
     }
 
-    // Sidestep Up: Up, Up rapido (esquiva lateral)
+    // Sidestep Up: Up, Up
     private void sidestepUp() {
         tap(BTN_UP_X, BTN_UP_Y, 50);
         mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 50), 60);
     }
 
-    // Sidestep Down: Down, Down rapido (esquiva lateral baixa)
+    // Sidestep Down: Down, Down
     private void sidestepDown() {
         tap(BTN_DOWN_X, BTN_DOWN_Y, 50);
         mainHandler.postDelayed(() -> tap(BTN_DOWN_X, BTN_DOWN_Y, 50), 60);
