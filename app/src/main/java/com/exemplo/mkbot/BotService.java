@@ -11,7 +11,6 @@ import android.graphics.Bitmap;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
 import android.hardware.HardwareBuffer;
-import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -71,6 +70,7 @@ public class BotService extends AccessibilityService {
     private int screenWidth = 1, screenHeight = 1;
     private int consecutiveHits = 0;
     private int saveCounter = 0;
+    private int frameCount = 0;
 
     @Override
     protected void onServiceConnected() {
@@ -106,18 +106,16 @@ public class BotService extends AccessibilityService {
             return false;
         }
 
-        // Volume+ = JOGAR (sempre que apertar)
+        // Volume+ = JOGAR (sempre reinicia tudo)
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (action == KeyEvent.ACTION_DOWN) {
-                setPlayMode(true);
-                startLoop();
-                Log.i(TAG, "Volume+ clicado - BOT JOGANDO");
+                forceStartPlaying();
                 return true;
             }
             return true;
         }
 
-        // Volume- = PARAR (sempre que apertar)
+        // Volume- = PARAR
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             if (action == KeyEvent.ACTION_DOWN) {
                 setPlayMode(false);
@@ -129,18 +127,44 @@ public class BotService extends AccessibilityService {
         return false;
     }
 
+    // FORCA reinicio total - chamado toda vez que Volume+ e apertado
+    private void forceStartPlaying() {
+        Log.i(TAG, "Volume+ clicado - REINICIANDO TUDO");
+
+        // 1. Para o loop atual completamente
+        loopRunning = false;
+        mainHandler.removeCallbacks(captureRunnable);
+
+        // 2. Reseta TODOS os estados
+        lastState = null;
+        lastActionIndex = -1;
+        repeatActionCount = 0;
+        consecutiveHits = 0;
+        saveCounter = 0;
+        frameCount = 0;
+        brain.resetLastAction();
+
+        // 3. Atualiza SharedPreferences
+        currentCharacter = prefs.getString(KEY_CURRENT_CHAR, "Ashrah");
+        SharedPreferences.Editor ed = prefs.edit();
+        ed.putLong(KEY_PLAY_START, System.currentTimeMillis());
+        ed.putLong("charStart_" + currentCharacter, System.currentTimeMillis());
+        ed.putBoolean(KEY_PLAY_MODE, true);
+        ed.apply();
+
+        // 4. Inicia o loop fresco
+        loopRunning = true;
+        mainHandler.post(captureRunnable);
+
+        Log.i(TAG, "Bot JOGANDO - loop reiniciado");
+    }
+
     private void setPlayMode(boolean play) {
         currentCharacter = prefs.getString(KEY_CURRENT_CHAR, "Ashrah");
         SharedPreferences.Editor ed = prefs.edit();
         if (play) {
             ed.putLong(KEY_PLAY_START, System.currentTimeMillis());
             ed.putLong("charStart_" + currentCharacter, System.currentTimeMillis());
-            // Reset do estado pra comecar nova jogatina
-            lastState = null;
-            lastActionIndex = -1;
-            repeatActionCount = 0;
-            consecutiveHits = 0;
-            brain.resetLastAction();
         } else {
             long start = prefs.getLong(KEY_PLAY_START, 0);
             if (start > 0) {
@@ -166,36 +190,16 @@ public class BotService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence pkg = event.getPackageName();
-        if (EMULATOR_PKG.equals(pkg)) {
-            if (prefs.getBoolean(KEY_RUNNING, false)) {
-                startLoop();
-            }
-        }
+        // NAO faz nada aqui - so o Volume+ controla o bot
+        // Isso previne que o bot pare no meio da luta
     }
 
     @Override
     public void onInterrupt() {
-        stopLoop();
+        // NAO para o loop aqui - so Volume- para
     }
 
     // ============ LOOP ============
-
-    private void startLoop() {
-        if (loopRunning) return;
-        loopRunning = true;
-        Log.i(TAG, "Loop iniciado.");
-        mainHandler.post(captureRunnable);
-    }
-
-    private void stopLoop() {
-        loopRunning = false;
-        mainHandler.removeCallbacks(captureRunnable);
-        lastState = null;
-        lastActionIndex = -1;
-        repeatActionCount = 0;
-    }
 
     private final Runnable captureRunnable = new Runnable() {
         @Override
@@ -205,21 +209,37 @@ public class BotService extends AccessibilityService {
                 loopRunning = false;
                 return;
             }
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
-            takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(),
-                new TakeScreenshotCallback() {
-                    @Override
-                    public void onSuccess(ScreenshotResult result) {
-                        final Bitmap frame = screenshotToBitmap(result);
-                        if (frame != null) {
-                            bgExecutor.execute(() -> processFrame(frame));
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                mainHandler.postDelayed(this, LOOP_INTERVAL_MS);
+                return;
+            }
+            try {
+                takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(),
+                    new TakeScreenshotCallback() {
+                        @Override
+                        public void onSuccess(ScreenshotResult result) {
+                            try {
+                                final Bitmap frame = screenshotToBitmap(result);
+                                if (frame != null) {
+                                    bgExecutor.execute(() -> processFrame(frame));
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Erro onSuccess", e);
+                            } finally {
+                                if (result != null && result.getHardwareBuffer() != null) {
+                                    result.getHardwareBuffer().close();
+                                }
+                            }
                         }
-                        result.getHardwareBuffer().close();
-                    }
-                    @Override
-                    public void onFailure(int code) {
-                    }
-                });
+                        @Override
+                        public void onFailure(int code) {
+                            Log.w(TAG, "takeScreenshot falhou: " + code);
+                        }
+                    });
+            } catch (Exception e) {
+                Log.e(TAG, "Erro takeScreenshot", e);
+            }
+            // SEMPRE reagenda - o loop so para se loopRunning = false
             mainHandler.postDelayed(this, LOOP_INTERVAL_MS);
         }
     };
@@ -244,18 +264,24 @@ public class BotService extends AccessibilityService {
 
     private void processFrame(Bitmap frame) {
         if (frame == null) return;
+
+        // Se Volume- foi apertado, para
         if (!prefs.getBoolean(KEY_PLAY_MODE, false)) {
             frame.recycle();
             return;
         }
 
         currentCharacter = prefs.getString(KEY_CURRENT_CHAR, "Ashrah");
-
         screenWidth = frame.getWidth();
         screenHeight = frame.getHeight();
+        frameCount++;
+
         try {
             GameState state = detector.detect(frame, screenWidth, screenHeight);
-            if (state == null) return;
+            if (state == null) {
+                frame.recycle();
+                return;
+            }
 
             long currentSession = 0;
             long start = prefs.getLong(KEY_PLAY_START, 0);
@@ -275,7 +301,7 @@ public class BotService extends AccessibilityService {
                 int dmgTaken = lastState.p1Hp - state.p1Hp;
                 reward = dmgDealt * 1.0 - dmgTaken * 1.0;
                 if (state.hitFlash) reward += 2.0;
-                if (lastActionIndex == actionIdxAnterior()) {
+                if (lastActionIndex == lastActionIndex) {
                     repeatActionCount++;
                     if (repeatActionCount >= 3) reward -= 1.0;
                 }
@@ -301,51 +327,51 @@ public class BotService extends AccessibilityService {
             lastState = state;
             lastActionIndex = actionIdx;
 
-            saveCounter++;
-            if (saveCounter % 50 == 0) {
+            if (frameCount % 50 == 0) {
                 saveQTable();
                 BackupManager.save(this, prefs);
             }
 
         } catch (Exception e) {
+            Log.e(TAG, "Erro processFrame", e);
         } finally {
             frame.recycle();
         }
     }
 
-    private int actionIdxAnterior() {
-        return lastActionIndex;
-    }
-
     // ============ ARSENAL POR PERSONAGEM ============
 
     private void executeAction(int actionIdx) {
-        switch (actionIdx) {
-            case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
-            case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
-            case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
-            case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;
-            case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;
-            case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
-            case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
-            case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
-            case 8: holdButton(BTN_R2_X, BTN_R2_Y, 250); break;
-            case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;
-            case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
-            case 11: break;
-            case 12: special1(); break;
-            case 13: special2(); break;
-            case 14: special3(); break;
-            case 15: special4(); break;
-            case 16: tripleCombo(); break;
-            case 17: tap(BTN_JUMPLEFT_X, BTN_JUMPLEFT_Y, 70); break;
-            case 18: tap(BTN_JUMPRIGHT_X, BTN_JUMPRIGHT_Y, 70); break;
-            case 19: airComboSimple(); break;
-            case 20: airComboAdvanced(); break;
-            case 21: parryCounter(); break;
-            case 22: sidestepUp(); break;
-            case 23: sidestepDown(); break;
-            default: break;
+        try {
+            switch (actionIdx) {
+                case 0: tap(BTN_A1_X, BTN_A1_Y, 70); break;
+                case 1: tap(BTN_A2_X, BTN_A2_Y, 70); break;
+                case 2: tap(BTN_A3_X, BTN_A3_Y, 70); break;
+                case 3: tap(BTN_A4_X, BTN_A4_Y, 70); break;
+                case 4: tap(BTN_BACK_X, BTN_BACK_Y, 70); break;
+                case 5: tap(BTN_FWD_X, BTN_FWD_Y, 70); break;
+                case 6: tap(BTN_UP_X, BTN_UP_Y, 70); break;
+                case 7: tap(BTN_DOWN_X, BTN_DOWN_Y, 70); break;
+                case 8: holdButton(BTN_R2_X, BTN_R2_Y, 250); break;
+                case 9: holdButton(BTN_R1_X, BTN_R1_Y, 250); break;
+                case 10: holdButton(BTN_L1_X, BTN_L1_Y, 250); break;
+                case 11: break;
+                case 12: special1(); break;
+                case 13: special2(); break;
+                case 14: special3(); break;
+                case 15: special4(); break;
+                case 16: tripleCombo(); break;
+                case 17: tap(BTN_JUMPLEFT_X, BTN_JUMPLEFT_Y, 70); break;
+                case 18: tap(BTN_JUMPRIGHT_X, BTN_JUMPRIGHT_Y, 70); break;
+                case 19: airComboSimple(); break;
+                case 20: airComboAdvanced(); break;
+                case 21: parryCounter(); break;
+                case 22: sidestepUp(); break;
+                case 23: sidestepDown(); break;
+                default: break;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Erro executeAction", e);
         }
     }
 
@@ -353,10 +379,6 @@ public class BotService extends AccessibilityService {
         if (currentCharacter.equals("Ashrah")) {
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
-            mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
-        } else if (currentCharacter.equals("Scorpion")) {
-            tap(BTN_BACK_X, BTN_BACK_Y, 60);
-            mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
         } else {
             tap(BTN_BACK_X, BTN_BACK_Y, 60);
@@ -370,10 +392,6 @@ public class BotService extends AccessibilityService {
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
-        } else if (currentCharacter.equals("Scorpion")) {
-            tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
-            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
-            mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
         } else {
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
@@ -386,10 +404,6 @@ public class BotService extends AccessibilityService {
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
-        } else if (currentCharacter.equals("Scorpion")) {
-            tap(BTN_FWD_X, BTN_FWD_Y, 60);
-            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
-            mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
         } else {
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
@@ -401,10 +415,6 @@ public class BotService extends AccessibilityService {
         if (currentCharacter.equals("Ashrah")) {
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
-            mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
-        } else if (currentCharacter.equals("Scorpion")) {
-            tap(BTN_FWD_X, BTN_FWD_Y, 60);
-            mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
         } else {
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
@@ -450,19 +460,27 @@ public class BotService extends AccessibilityService {
     }
 
     private void tap(float fx, float fy, long durationMs) {
-        Path p = new Path();
-        p.moveTo(fx * screenWidth, fy * screenHeight);
-        GestureDescription.StrokeDescription s =
-            new GestureDescription.StrokeDescription(p, 0, durationMs);
-        dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
+        try {
+            Path p = new Path();
+            p.moveTo(fx * screenWidth, fy * screenHeight);
+            GestureDescription.StrokeDescription s =
+                new GestureDescription.StrokeDescription(p, 0, durationMs);
+            dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro tap", e);
+        }
     }
 
     private void holdButton(float fx, float fy, long durationMs) {
-        Path p = new Path();
-        p.moveTo(fx * screenWidth, fy * screenHeight);
-        GestureDescription.StrokeDescription s =
-            new GestureDescription.StrokeDescription(p, 0, durationMs);
-        dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
+        try {
+            Path p = new Path();
+            p.moveTo(fx * screenWidth, fy * screenHeight);
+            GestureDescription.StrokeDescription s =
+                new GestureDescription.StrokeDescription(p, 0, durationMs);
+            dispatchGesture(new GestureDescription.Builder().addStroke(s).build(), null, null);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro hold", e);
+        }
     }
 
     private void saveQTable() {
