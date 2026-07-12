@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.View;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.Spinner;
@@ -90,10 +91,8 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferences.Editor ed = prefs.edit();
             ed.putBoolean(KEY_RUNNING, !running).apply();
             if (!running) {
-                // Ativando
                 Toast.makeText(this, "Bot ativado", Toast.LENGTH_SHORT).show();
             } else {
-                // Desativando - tambem para de jogar
                 ed.putBoolean(KEY_PLAY_MODE, false).apply();
                 Toast.makeText(this, "Bot desativado", Toast.LENGTH_SHORT).show();
             }
@@ -134,8 +133,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateFolderStatus() {
-        TextView txtFolder = findViewById(R.id.txtHint);
-        // usa o hint fixo, nao mexe
+        // Status da pasta - placeholder, o hint fica fixo no layout
     }
 
     private void updateActivateButton() {
