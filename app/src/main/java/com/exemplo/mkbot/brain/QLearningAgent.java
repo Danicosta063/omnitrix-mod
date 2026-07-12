@@ -11,7 +11,7 @@ public class QLearningAgent {
     private static final int N_ACTIONS = 24;
     private static final int N_STATES = N_HP_BINS * N_HP_BINS * N_MOTION_BINS * N_ACTIONS;
 
-    private static final double ALPHA = 0.15;
+    private static final double ALPHA = 0.25; // aprendizado mais rapido
     private static final double GAMMA = 0.95;
     private static final double EPSILON_START = 0.4;
     private static final double EPSILON_MIN = 0.05;
