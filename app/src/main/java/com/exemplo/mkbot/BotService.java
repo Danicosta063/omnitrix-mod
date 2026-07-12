@@ -11,6 +11,7 @@ import android.graphics.Bitmap;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
 import android.hardware.HardwareBuffer;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -93,26 +94,30 @@ public class BotService extends AccessibilityService {
         Log.i(TAG, "BotService conectado.");
     }
 
-    // ============ BOTOES DE VOLUME - CLIQUE UNICO ============
+    // ============ BOTOES DE VOLUME ============
 
     @Override
     public boolean onKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
         int action = event.getAction();
 
-        // Volume+ com 1 clique = JOGAR
+        // Se o bot estiver DESATIVADO, nao consome - volume funciona normal
+        if (!prefs.getBoolean(KEY_RUNNING, false)) {
+            return false;
+        }
+
+        // Volume+ = JOGAR (sempre que apertar)
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (action == KeyEvent.ACTION_DOWN) {
-                if (prefs.getBoolean(KEY_RUNNING, false)) {
-                    setPlayMode(true);
-                    Log.i(TAG, "Volume+ clicado - BOT JOGANDO");
-                }
-                return true; // Consome sempre
+                setPlayMode(true);
+                startLoop();
+                Log.i(TAG, "Volume+ clicado - BOT JOGANDO");
+                return true;
             }
             return true;
         }
 
-        // Volume- com 1 clique = PARAR
+        // Volume- = PARAR (sempre que apertar)
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             if (action == KeyEvent.ACTION_DOWN) {
                 setPlayMode(false);
@@ -130,6 +135,12 @@ public class BotService extends AccessibilityService {
         if (play) {
             ed.putLong(KEY_PLAY_START, System.currentTimeMillis());
             ed.putLong("charStart_" + currentCharacter, System.currentTimeMillis());
+            // Reset do estado pra comecar nova jogatina
+            lastState = null;
+            lastActionIndex = -1;
+            repeatActionCount = 0;
+            consecutiveHits = 0;
+            brain.resetLastAction();
         } else {
             long start = prefs.getLong(KEY_PLAY_START, 0);
             if (start > 0) {
@@ -145,6 +156,7 @@ public class BotService extends AccessibilityService {
                 ed.putLong("charTime_" + currentCharacter, charTotal);
                 ed.putLong("charStart_" + currentCharacter, 0);
             }
+            saveQTable();
         }
         ed.putBoolean(KEY_PLAY_MODE, play).apply();
         BackupManager.save(this, prefs);
@@ -161,7 +173,6 @@ public class BotService extends AccessibilityService {
                 startLoop();
             }
         }
-        // NAO chama stopLoop aqui - previne parar no meio da luta
     }
 
     @Override
@@ -174,6 +185,7 @@ public class BotService extends AccessibilityService {
     private void startLoop() {
         if (loopRunning) return;
         loopRunning = true;
+        Log.i(TAG, "Loop iniciado.");
         mainHandler.post(captureRunnable);
     }
 
@@ -189,7 +201,6 @@ public class BotService extends AccessibilityService {
         @Override
         public void run() {
             if (!loopRunning) return;
-            // Se KEY_RUNNING foi desativado, para o loop
             if (!prefs.getBoolean(KEY_RUNNING, false)) {
                 loopRunning = false;
                 return;
@@ -338,94 +349,76 @@ public class BotService extends AccessibilityService {
         }
     }
 
-    // Special 1 - muda conforme personagem
     private void special1() {
         if (currentCharacter.equals("Ashrah")) {
-            // Heavenly Light: Down, Back + A1
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
         } else if (currentCharacter.equals("Scorpion")) {
-            // Bloody Spear: Back, Forward + A1
             tap(BTN_BACK_X, BTN_BACK_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
         } else {
-            // Generico: Back, Forward + A1
             tap(BTN_BACK_X, BTN_BACK_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
         }
     }
 
-    // Special 2 - muda conforme personagem
     private void special2() {
         if (currentCharacter.equals("Ashrah")) {
-            // Lightning Blast: Down, Forward + A1
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A1_X, BTN_A1_Y, 70), 160);
         } else if (currentCharacter.equals("Scorpion")) {
-            // Hellfire: Down, Back + A2
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
         } else {
-            // Generico: Down, Back + A2
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 160);
         }
     }
 
-    // Special 3 - muda conforme personagem
     private void special3() {
         if (currentCharacter.equals("Ashrah")) {
-            // Spin Cycle: Down, Up + A3
             tap(BTN_DOWN_X, BTN_DOWN_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
         } else if (currentCharacter.equals("Scorpion")) {
-            // Backflip Kick: Forward, Back + A3
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
         } else {
-            // Generico: Forward, Back + A3
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 160);
         }
     }
 
-    // Special 4 - muda conforme personagem
     private void special4() {
         if (currentCharacter.equals("Ashrah")) {
-            // Nature's Torpedo: Forward, Forward + A4
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_FWD_X, BTN_FWD_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
         } else if (currentCharacter.equals("Scorpion")) {
-            // Hellfire Punch: Forward, Back + A4
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
         } else {
-            // Generico: Forward, Back + A4
             tap(BTN_FWD_X, BTN_FWD_Y, 60);
             mainHandler.postDelayed(() -> tap(BTN_BACK_X, BTN_BACK_Y, 60), 80);
             mainHandler.postDelayed(() -> tap(BTN_A4_X, BTN_A4_Y, 70), 160);
         }
     }
 
-    // Triple Combo: A2, A2, A3
     private void tripleCombo() {
         tap(BTN_A2_X, BTN_A2_Y, 70);
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 150);
         mainHandler.postDelayed(() -> tap(BTN_A3_X, BTN_A3_Y, 70), 300);
     }
 
-    // Air Combo Simples: Launcher (R1) + Pular + A1, A2 no ar
     private void airComboSimple() {
         holdButton(BTN_R1_X, BTN_R1_Y, 250);
         mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 70), 300);
@@ -433,7 +426,6 @@ public class BotService extends AccessibilityService {
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 650);
     }
 
-    // Air Combo Avancado: Launcher (R1) + Pular + L1 (air cancel) + A1, A2
     private void airComboAdvanced() {
         holdButton(BTN_R1_X, BTN_R1_Y, 250);
         mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 70), 300);
@@ -442,19 +434,16 @@ public class BotService extends AccessibilityService {
         mainHandler.postDelayed(() -> tap(BTN_A2_X, BTN_A2_Y, 70), 800);
     }
 
-    // Parry: Back + Block
     private void parryCounter() {
         tap(BTN_BACK_X, BTN_BACK_Y, 60);
         mainHandler.postDelayed(() -> holdButton(BTN_R2_X, BTN_R2_Y, 200), 50);
     }
 
-    // Sidestep Up: Up, Up
     private void sidestepUp() {
         tap(BTN_UP_X, BTN_UP_Y, 50);
         mainHandler.postDelayed(() -> tap(BTN_UP_X, BTN_UP_Y, 50), 60);
     }
 
-    // Sidestep Down: Down, Down
     private void sidestepDown() {
         tap(BTN_DOWN_X, BTN_DOWN_Y, 50);
         mainHandler.postDelayed(() -> tap(BTN_DOWN_X, BTN_DOWN_Y, 50), 60);
