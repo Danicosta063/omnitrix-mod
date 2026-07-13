@@ -8,22 +8,37 @@ import android.accessibilityservice.GestureDescription;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.ColorSpace;
 import android.graphics.Path;
+import android.graphics.PixelFormat;
 import android.hardware.HardwareBuffer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.tts.TextToSpeech;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import com.exemplo.mkbot.brain.QLearningAgent;
 import com.exemplo.mkbot.vision.GameDetector;
 import com.exemplo.mkbot.vision.GameDetector.GameState;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
+import java.lang.reflect.Type;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -41,6 +56,7 @@ public class BotService extends AccessibilityService {
     private static final String KEY_WINS = "wins";
     private static final String KEY_LOSSES = "losses";
     private static final String KEY_POINTS = "points";
+    private static final String KEY_BUTTONS = "buttonsJson";
 
     private static final long LOOP_INTERVAL_MS = 100;
 
@@ -62,8 +78,39 @@ public class BotService extends AccessibilityService {
     private static final int ACT_SPECIAL4 = 14;
     private static final int ACT_NOOP = 15;
 
-    // Maintaining move: repete a direcao por N frames
     private static final int MOVE_HOLD_FRAMES = 10;
+
+    // ============================================================
+    //  Calibracao por voz
+    // ============================================================
+
+    private static final int CALIB_OFF = 0;
+    private static final int CALIB_ACTIVE = 1;
+
+    private static final String[] CALIB_KEYS = {
+            ButtonMap.A1, ButtonMap.A2, ButtonMap.A3, ButtonMap.A4,
+            ButtonMap.UP, ButtonMap.DOWN, ButtonMap.BACK, ButtonMap.FWD,
+            ButtonMap.R1, ButtonMap.R2, ButtonMap.L1, ButtonMap.L2
+    };
+
+    private static final String[] CALIB_NAMES_PT = {
+            "Toque no botao Quadrado",
+            "Toque no botao Triangulo",
+            "Toque no botao Equis",
+            "Toque no botao Circulo",
+            "Toque no botao Cima",
+            "Toque no botao Baixo",
+            "Toque no botao Esquerda",
+            "Toque no botao Direita",
+            "Toque no botao Erre Um, Especial",
+            "Toque no botao Erre Dois, Bloqueio",
+            "Toque no botao Ele Um, Trocar Estilo",
+            "Toque no botao Ele Dois, Pegar Arma"
+    };
+
+    // ============================================================
+    //  Campos principais
+    // ============================================================
 
     private Handler mainHandler;
     private Executor bgExecutor;
@@ -84,7 +131,6 @@ public class BotService extends AccessibilityService {
     private int saveCounter = 0;
     private int frameCount = 0;
 
-    // Deteccao de luta
     private boolean inFight = false;
     private int fightConfirmFrames = 0;
     private int pausedFrames = 0;
@@ -92,6 +138,22 @@ public class BotService extends AccessibilityService {
     private int p1HpAtEnd = 0;
     private int oppHpAtEnd = 0;
     private boolean fightEnded = false;
+
+    // Calibracao
+    private int calibState = CALIB_OFF;
+    private int calibIndex = 0;
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
+    private boolean calibPendingStart = false;
+    private WindowManager windowManager;
+    private FrameLayout overlayLayout;
+    private TextView overlayText;
+    private Map<String, float[]> calibButtons;
+    private int calibScreenW = 1, calibScreenH = 1;
+
+    // ============================================================
+    //  Conexao do servico
+    // ============================================================
 
     @Override
     protected void onServiceConnected() {
@@ -103,10 +165,35 @@ public class BotService extends AccessibilityService {
         brain = new QLearningAgent();
         detector = new GameDetector();
         buttonMap = new ButtonMap(this);
+        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        calibButtons = new HashMap<>();
         loadQTable();
         long totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0);
         brain.restoreEpsilonByTime(totalPlay);
         currentCharacter = prefs.getString(KEY_CURRENT_CHAR, "Ashrah");
+
+        // Inicializa TTS em portugues
+        tts = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status == TextToSpeech.SUCCESS) {
+                    int result = tts.setLanguage(new Locale("pt", "BR"));
+                    if (result == TextToSpeech.LANG_MISSING_DATA
+                            || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        tts.setLanguage(Locale.getDefault());
+                    }
+                    ttsReady = true;
+                    Log.i(TAG, "TTS pronto.");
+                    if (calibPendingStart) {
+                        calibPendingStart = false;
+                        startCalibration();
+                    }
+                } else {
+                    Log.w(TAG, "TTS falhou ao iniciar.");
+                    ttsReady = false;
+                }
+            }
+        });
 
         AccessibilityServiceInfo info = getServiceInfo();
         if (info != null) {
@@ -114,6 +201,17 @@ public class BotService extends AccessibilityService {
             setServiceInfo(info);
         }
         Log.i(TAG, "BotService conectado.");
+    }
+
+    @Override
+    public void onDestroy() {
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
+        }
+        removeOverlay();
+        super.onDestroy();
     }
 
     // ============================================================
@@ -131,6 +229,17 @@ public class BotService extends AccessibilityService {
 
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (action == KeyEvent.ACTION_DOWN) {
+                if (calibState == CALIB_ACTIVE) {
+                    // Se ja esta calibrando, Volume+ cancela e recomeca
+                    cancelCalibration();
+                    return true;
+                }
+                if (!buttonMap.isFullyCalibrated()) {
+                    // Precisa calibrar primeiro
+                    forceStartCalibration();
+                    return true;
+                }
+                // Ja calibrado, joga
                 forceStartPlaying();
                 return true;
             }
@@ -139,6 +248,10 @@ public class BotService extends AccessibilityService {
 
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             if (action == KeyEvent.ACTION_DOWN) {
+                if (calibState == CALIB_ACTIVE) {
+                    cancelCalibration();
+                    return true;
+                }
                 setPlayMode(false);
                 Log.i(TAG, "Volume- clicado - BOT PARADO");
                 return true;
@@ -147,6 +260,174 @@ public class BotService extends AccessibilityService {
         }
         return false;
     }
+
+    // ============================================================
+    //  Calibracao por voz
+    // ============================================================
+
+    private void forceStartCalibration() {
+        Log.i(TAG, "Volume+ clicado - INICIANDO CALIBRACAO POR VOZ");
+        calibIndex = 0;
+        calibButtons = new HashMap<>();
+
+        // Pegar dimensoes reais da tela
+        DisplayMetrics metrics = new DisplayMetrics();
+        windowManager.getDefaultDisplay().getRealMetrics(metrics);
+        calibScreenW = metrics.widthPixels;
+        calibScreenH = metrics.heightPixels;
+        Log.i(TAG, "Tela calibracao: " + calibScreenW + "x" + calibScreenH);
+
+        if (ttsReady) {
+            startCalibration();
+        } else {
+            calibPendingStart = true;
+            Log.i(TAG, "Aguardando TTS ficar pronto...");
+        }
+    }
+
+    private void startCalibration() {
+        calibState = CALIB_ACTIVE;
+        showOverlay();
+        speak("Calibracao iniciada. " + CALIB_NAMES_PT[0]);
+        updateOverlayText(CALIB_NAMES_PT[0]);
+        Log.i(TAG, "Calibracao ativa. Botao 1: " + CALIB_KEYS[0]);
+    }
+
+    private void onCalibTap(float x, float y) {
+        if (calibState != CALIB_ACTIVE) return;
+        if (calibIndex >= CALIB_KEYS.length) return;
+
+        float fx = x / calibScreenW;
+        float fy = y / calibScreenH;
+        String key = CALIB_KEYS[calibIndex];
+        calibButtons.put(key, new float[]{fx, fy});
+
+        Log.i(TAG, "Calibrado " + key + " = (" + fx + ", " + fy + ")");
+
+        calibIndex++;
+
+        if (calibIndex >= CALIB_KEYS.length) {
+            // Fim da calibracao
+            finishCalibration();
+        } else {
+            String nextMsg = CALIB_NAMES_PT[calibIndex];
+            speak(nextMsg);
+            updateOverlayText(nextMsg);
+            Log.i(TAG, "Proximo botao: " + CALIB_KEYS[calibIndex]);
+        }
+    }
+
+    private void finishCalibration() {
+        calibState = CALIB_OFF;
+        // Salvar no SharedPreferences
+        String json = gson.toJson(calibButtons);
+        prefs.edit().putString(KEY_BUTTONS, json).apply();
+        BackupManager.save(this, prefs);
+        // Recarregar ButtonMap
+        buttonMap = new ButtonMap(this);
+        removeOverlay();
+        speak("Calibracao concluida com sucesso. O bot vai comecar a jogar agora.");
+        Log.i(TAG, "Calibracao concluida. " + calibButtons.size() + " botoes salvos.");
+        // Iniciar jogo
+        mainHandler.postDelayed(() -> forceStartPlaying(), 2000);
+    }
+
+    private void cancelCalibration() {
+        calibState = CALIB_OFF;
+        calibIndex = 0;
+        removeOverlay();
+        speak("Calibracao cancelada.");
+        Log.i(TAG, "Calibracao cancelada.");
+    }
+
+    private void speak(String text) {
+        if (tts != null && ttsReady) {
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "calib_msg");
+        }
+    }
+
+    // ============================================================
+    //  Overlay para capturar toques durante calibracao
+    // ============================================================
+
+    private void showOverlay() {
+        if (overlayLayout != null) {
+            removeOverlay();
+        }
+
+        overlayLayout = new FrameLayout(this);
+        overlayLayout.setBackgroundColor(Color.TRANSPARENT);
+
+        overlayText = new TextView(this);
+        overlayText.setText(CALIB_NAMES_PT[0]);
+        overlayText.setTextSize(18f);
+        overlayText.setTextColor(Color.WHITE);
+        overlayText.setBackgroundColor(Color.argb(200, 0, 0, 0));
+        overlayText.setPadding(30, 40, 30, 40);
+        overlayText.setGravity(Gravity.CENTER);
+
+        FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL
+        );
+        textParams.topMargin = 20;
+        overlayLayout.addView(overlayText, textParams);
+
+        overlayLayout.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    if (calibState != CALIB_ACTIVE) return false;
+                    float x = event.getRawX();
+                    float y = event.getRawY();
+                    // Ignora toques na area do texto (topo da tela)
+                    if (y < 120) return true;
+                    onCalibTap(x, y);
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+        );
+
+        try {
+            windowManager.addView(overlayLayout, params);
+            Log.i(TAG, "Overlay de calibracao mostrado.");
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao mostrar overlay", e);
+        }
+    }
+
+    private void updateOverlayText(String text) {
+        if (overlayText != null) {
+            mainHandler.post(() -> overlayText.setText(text));
+        }
+    }
+
+    private void removeOverlay() {
+        if (overlayLayout != null) {
+            try {
+                windowManager.removeView(overlayLayout);
+            } catch (Exception e) {
+                Log.e(TAG, "Erro ao remover overlay", e);
+            }
+            overlayLayout = null;
+            overlayText = null;
+        }
+    }
+
+    // ============================================================
+    //  Iniciar jogo
+    // ============================================================
 
     private void forceStartPlaying() {
         Log.i(TAG, "Volume+ clicado - REINICIANDO TUDO");
@@ -209,12 +490,10 @@ public class BotService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // Controlado por volume keys
     }
 
     @Override
     public void onInterrupt() {
-        // Controlado por volume keys
     }
 
     // ============================================================
@@ -227,6 +506,10 @@ public class BotService extends AccessibilityService {
             if (!loopRunning) return;
             if (!prefs.getBoolean(KEY_RUNNING, false)) {
                 loopRunning = false;
+                return;
+            }
+            if (calibState == CALIB_ACTIVE) {
+                mainHandler.postDelayed(this, LOOP_INTERVAL_MS);
                 return;
             }
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -300,14 +583,12 @@ public class BotService extends AccessibilityService {
                 return;
             }
 
-            // Atualiza epsilon por tempo
             long currentSession = 0;
             long start = prefs.getLong(KEY_PLAY_START, 0);
             if (start > 0) currentSession = System.currentTimeMillis() - start;
             long totalPlay = prefs.getLong(KEY_TOTAL_PLAY, 0) + currentSession;
             brain.decayEpsilonByTime(totalPlay);
 
-            // ---- Deteccao de tela preta ----
             if (state.blackScreen) {
                 blackScreenFrames++;
                 if (blackScreenFrames > 5) {
@@ -316,14 +597,13 @@ public class BotService extends AccessibilityService {
                     }
                     inFight = false;
                     fightConfirmFrames = 0;
+                    frame.recycle();
                     return;
                 }
             } else {
                 blackScreenFrames = 0;
             }
 
-            // ---- Entrar em luta ----
-            // Condicao: HP dos dois > 0, motion alto, tela nao preta
             if (!inFight && !fightEnded && !state.blackScreen
                     && state.p1Hp > 0 && state.oppHp > 0
                     && state.motion > 15) {
@@ -350,22 +630,23 @@ public class BotService extends AccessibilityService {
             p1HpAtEnd = state.p1Hp;
             oppHpAtEnd = state.oppHp;
 
-            // ---- Deteccao de fim de luta ----
             if (state.oppHp <= 0 && state.p1Hp > 0) {
                 onFightEnd(true);
+                frame.recycle();
                 return;
             }
             if (state.p1Hp <= 0 && state.oppHp > 0) {
                 onFightEnd(false);
+                frame.recycle();
                 return;
             }
 
-            // ---- Deteccao de pausa/inatividade ----
             if (state.motion < 5) {
                 pausedFrames++;
                 if (pausedFrames > 60 && !fightEnded) {
                     boolean win = decideWinner();
                     onFightEnd(win);
+                    frame.recycle();
                     return;
                 }
                 if (pausedFrames > 10) {
@@ -381,7 +662,6 @@ public class BotService extends AccessibilityService {
                 return;
             }
 
-            // ---- Conta hits e combos ----
             boolean comboHit = false;
             if (state.hitFlash) {
                 consecutiveHits++;
@@ -394,20 +674,16 @@ public class BotService extends AccessibilityService {
                 consecutiveHits = 0;
             }
 
-            // ---- Maintaining move (segura direcao por N frames) ----
             if (moveHoldCount > 0 && moveHoldAction >= 0) {
                 moveHoldCount--;
-                // Mantem a acao de movimento
                 final int act = moveHoldAction;
                 mainHandler.post(() -> executeAction(act));
                 frame.recycle();
                 return;
             }
 
-            // ---- Recompensa ----
             float reward = brain.computeReward(lastState, state, lastActionIndex, comboHit);
 
-            // ---- SARSA: escolhe acao atual e proxima ----
             int stateIdx = brain.discretizeState(state);
             int actionIdx = brain.chooseAction(stateIdx);
 
@@ -417,7 +693,6 @@ public class BotService extends AccessibilityService {
                 brain.update(lastIdx, lastActionIndex, reward, nextIdx, actionIdx);
             }
 
-            // ---- Maintaining move: se for acao de movimento, segura por N frames ----
             if (actionIdx == ACT_BACK || actionIdx == ACT_FWD
                     || actionIdx == ACT_UP || actionIdx == ACT_DOWN) {
                 moveHoldCount = MOVE_HOLD_FRAMES - 1;
@@ -430,7 +705,6 @@ public class BotService extends AccessibilityService {
             lastState = state;
             lastActionIndex = actionIdx;
 
-            // ---- Salva periodicamente ----
             saveCounter++;
             if (saveCounter % 100 == 0) {
                 saveQTable();
@@ -476,7 +750,6 @@ public class BotService extends AccessibilityService {
             .putInt(KEY_LOSSES, losses)
             .apply();
 
-        // Recompensa terminal
         float terminal = win ? QLearningAgent.R_WIN : QLearningAgent.R_LOSS;
         if (lastState != null && lastActionIndex >= 0) {
             int idx = brain.discretizeState(lastState, lastActionIndex);
@@ -486,7 +759,6 @@ public class BotService extends AccessibilityService {
         Log.i(TAG, "Luta fim win=" + win + " total=" + fights +
               " V=" + wins + " D=" + losses);
 
-        // Reset apos 3 segundos
         mainHandler.postDelayed(() -> {
             fightEnded = false;
             inFight = false;
