@@ -39,19 +39,20 @@ public class ButtonMap {
     public ButtonMap(Context ctx) {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String json = prefs.getString(KEY_BUTTONS, null);
+
+        Map<String, float[]> loadedButtons = null;
         if (json != null) {
             try {
                 Gson gson = new Gson();
                 Type type = new TypeToken<HashMap<String, float[]>>() {}.getType();
-                Map<String, float[]> loaded = gson.fromJson(json, type);
-                if (loaded != null) {
-                    buttons = loaded;
-                } else {
-                    buttons = new HashMap<>();
-                }
+                loadedButtons = gson.fromJson(json, type);
             } catch (Exception e) {
-                buttons = new HashMap<>();
+                // loadedButtons permanece null, usara HashMap vazio abaixo
             }
+        }
+
+        if (loadedButtons != null) {
+            buttons = loadedButtons;
         } else {
             buttons = new HashMap<>();
         }
