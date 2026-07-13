@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MK Bot</string>
+
+    <!-- Descricao da acessibilidade -->
+    <string name="accessibility_description">Bot de aprendizado por reforco para Mortal Kombat Armageddon. Captura a tela, detecta barras de vida e resultados, e simula toques para jogar automaticamente. Necessario para acessibilidade para poder ler a tela e tocar nela.</string>
+
+    <!-- MainActivity -->
+    <string name="bot_off">Bot Desligado</string>
+    <string name="bot_on">Bot Ligado</string>
+    <string name="enable_accessibility">Ativar Acessibilidade</string>
+    <string name="status_label">Status do Bot</string>
+    <string name="training_label">Lutas treinadas: %1$d</string>
+    <string name="wins_label">Vitorias: %1$d</string>
+    <string name="losses_label">Derrotas: %1$d</string>
+    <string name="winrate_label">Taxa de vitoria: %1$.1f%%</string>
+    <string name="reset_qtable">Resetar Aprendizado</string>
+    <string name="reset_confirm">Tem certeza? Isso apaga tudo que o bot aprendeu.</string>
+    <string name="select_folder">Selecionar Pasta de Memoria</string>
+    <string name="calibrate_buttons">Calibrar Botoes</string>
+    <string name="activate_bot">Ativar Bot</string>
+    <string name="deactivate_bot">Desativar Bot</string>
+    <string name="character_label">Personagem:</string>
+    <string name="hours_label">Tempo de jogo: %1$s</string>
+    <string name="epsilon_label">Epsilon: %1$.3f</string>
+    <string name="points_label">Pontos: %1$d</string>
+    <string name="char_time_label">Tempo %1$s: %2$s</string>
+    <string name="bot_jogando">Bot jogando</string>
+    <string name="bot_parado">Bot parado</string>
+    <string name="bot_desligado">Bot desligado</string>
+    <string name="volume_instructions">Volume+ inicia o bot, Volume- para o bot</string>
+
+    <!-- CalibrationActivity -->
+    <string name="calibration_title">Calibracao de Botoes</string>
+    <string name="calibration_instructions">Toque no botao indicado no emulador abaixo. O app vai capturar a posicao automaticamente.</string>
+    <string name="calibration_progress">Botao %1$d de %2$d</string>
+    <string name="calibration_done">Calibracao concluida com sucesso!</string>
+    <string name="calibration_redo">Recalibrar</string>
+    <string name="calibration_skip">Pular</string>
+    <string name="calibration_finish">Finalizar</string>
+    <string name="calibration_cancel">Cancelar</string>
+    <string name="calibration_tap_here">Toque aqui quando estiver no botao correto</string>
+
+    <!-- Nomes dos botoes para calibrar -->
+    <string name="btn_a1_name">A1 (Square)</string>
+    <string name="btn_a2_name">A2 (Triangle)</string>
+    <string name="btn_a3_name">A3 (X / Cross)</string>
+    <string name="btn_a4_name">A4 (Circle)</string>
+    <string name="btn_up_name">D-pad Cima (Up)</string>
+    <string name="btn_down_name">D-pad Baixo (Down)</string>
+    <string name="btn_back_name">D-pad Esquerda (Back)</string>
+    <string name="btn_fwd_name">D-pad Direita (Forward)</string>
+    <string name="btn_r1_name">R1 (Special)</string>
+    <string name="btn_r2_name">R2 (Block / Throw)</string>
+    <string name="btn_l1_name">L1 (Style Change)</string>
+    <string name="btn_l2_name">L2 (Grab Weapon)</string>
+
+    <!-- Personagens -->
+    <string-array name="characters_array">
+        <item>Ashrah</item>
+        <item>Scorpion</item>
+        <item>Sub-Zero</item>
+        <item>Generic</item>
+    </string-array>
+</resources>
