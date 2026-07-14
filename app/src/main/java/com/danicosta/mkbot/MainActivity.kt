@@ -23,7 +23,6 @@ class MainActivity : ComponentActivity() {
         const val ACCESSIBILITY_SERVICE_ID = "com.danicosta.mkbot/com.danicosta.mkbot.BotAccessibilityService"
         const val PREFS_NAME = "mkbot_prefs"
         const val KEY_FOLDER_URI = "memory_folder_uri"
-        const val KEY_PLAYTIME_PREFIX = "playtime_"
         const val CURRENT_CHARACTER = "Ashrah"
 
         var projectionResultCode: Int = 0
@@ -61,6 +60,7 @@ class MainActivity : ComponentActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
                 prefs.edit().putString(KEY_FOLDER_URI, uri.toString()).apply()
+                MemoryManager.load()
                 Toast.makeText(this, "Pasta de memória escolhida", Toast.LENGTH_SHORT).show()
             }
             refreshStatus()
@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        MemoryManager.init(applicationContext)
         setContentView(buildLayout())
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -158,10 +159,8 @@ class MainActivity : ComponentActivity() {
         val folderUri = prefs.getString(KEY_FOLDER_URI, null)
         statusFolder.text = "Pasta de memória: " + if (folderUri != null) "escolhida" else "não escolhida"
 
-        val secondsCharacter = prefs.getLong(KEY_PLAYTIME_PREFIX + CURRENT_CHARACTER, 0L)
-        val secondsTotal = prefs.getLong(KEY_PLAYTIME_PREFIX + "total", 0L)
-        timeCharacter.text = "$CURRENT_CHARACTER: " + formatTime(secondsCharacter)
-        timeTotal.text = "Total: " + formatTime(secondsTotal)
+        timeCharacter.text = "$CURRENT_CHARACTER: " + formatTime(MemoryManager.characterSeconds(CURRENT_CHARACTER))
+        timeTotal.text = "Total: " + formatTime(MemoryManager.totalSeconds())
     }
 
     private fun formatTime(totalSeconds: Long): String {
