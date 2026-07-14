@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONObject
 
@@ -19,8 +20,11 @@ object MemoryManager {
     private var dirty = false
     private var loadedOnce = false
 
+    var onLoaded: (() -> Unit)? = null
+
     private val ioThread = HandlerThread("MKBotMemoryIO").apply { start() }
     private val ioHandler = Handler(ioThread.looper)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -64,32 +68,45 @@ object MemoryManager {
 
     fun load() {
         val ctx = appContext ?: return
-        val uri = folderUri() ?: return
+        val uri = folderUri()
+        if (uri == null) {
+            mainHandler.post { onLoaded?.invoke() }
+            return
+        }
         ioHandler.post {
             try {
-                val root = DocumentFile.fromTreeUri(ctx, uri) ?: return@post
-                val file = root.findFile(FILE_NAME) ?: return@post
-                val text = ctx.contentResolver.openInputStream(file.uri)
-                    ?.use { it.readBytes().toString(Charsets.UTF_8) } ?: return@post
-                val json = JSONObject(text)
-                totalMillis = json.optLong("totalSeconds", 0L) * 1000
+                val root = DocumentFile.fromTreeUri(ctx, uri)
+                val file = root?.findFile(FILE_NAME)
+                if (file != null) {
+                    val text = ctx.contentResolver.openInputStream(file.uri)
+                        ?.use { it.readBytes().toString(Charsets.UTF_8) }
+                    if (text != null) {
+                        val json = JSONObject(text)
+                        totalMillis = json.optLong("totalSeconds", 0L) * 1000
 
-                val character = MainActivity.CURRENT_CHARACTER
-                val charObj = json.optJSONObject("characters")?.optJSONObject(character) ?: return@post
-                characterMillis[character] = charObj.optLong("seconds", 0L) * 1000
-
-                val movesObj = charObj.optJSONObject("moveScores") ?: return@post
-                val keys = movesObj.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val scoreObj = movesObj.getJSONObject(key)
-                    BotBrain.moveScores[key] = ActionScore().apply {
-                        attempts = scoreObj.optInt("attempts", 0)
-                        successes = scoreObj.optInt("successes", 0)
+                        val character = MainActivity.CURRENT_CHARACTER
+                        val charObj = json.optJSONObject("characters")?.optJSONObject(character)
+                        if (charObj != null) {
+                            characterMillis[character] = charObj.optLong("seconds", 0L) * 1000
+                            val movesObj = charObj.optJSONObject("moveScores")
+                            if (movesObj != null) {
+                                val keys = movesObj.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    val scoreObj = movesObj.getJSONObject(key)
+                                    BotBrain.moveScores[key] = ActionScore().apply {
+                                        attempts = scoreObj.optInt("attempts", 0)
+                                        successes = scoreObj.optInt("successes", 0)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
                 // Ainda não existe arquivo, ou deu erro lendo — começa do zero sem travar o app.
+            } finally {
+                mainHandler.post { onLoaded?.invoke() }
             }
         }
     }
