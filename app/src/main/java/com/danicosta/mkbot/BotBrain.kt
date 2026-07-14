@@ -3,20 +3,25 @@ package com.danicosta.mkbot
 import android.os.Handler
 import android.os.HandlerThread
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.random.Random
 
 object BotBrain {
 
-    private const val TICK_MS = 180L
+    private const val TICK_MS = 450L
 
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
-    private var lastP1Health = 100
-    private var lastP2Health = 100
-    private var lastZone: String? = null
-    private var lastMove: String? = null
+    private var stepIndex = 0
 
-    val moveScores: MutableMap<String, ActionScore> = ConcurrentHashMap()
+    // Sem visão por enquanto — só gira nas suas coordenadas, na ordem abaixo, sem parar.
+    private val rotation = listOf(
+        Action.RIGHT to "AND",
+        Action.FRONT_PUNCH to "SOC",
+        Action.FRONT_KICK to "CHT",
+        Action.BACK_PUNCH to "SC2",
+        Action.BLOCK to "DEF"
+    )
+
+    val moveScores: MutableMap<String, ActionScore> = ConcurrentHashMap() // mantido pro arquivo de memória não quebrar
 
     fun start() {
         if (handlerThread != null) return
@@ -42,90 +47,10 @@ object BotBrain {
         val service = BotAccessibilityService.instance ?: return
         MemoryManager.addElapsedMillis(MainActivity.CURRENT_CHARACTER, TICK_MS)
 
-        val state = GameStateReader.read()
-        if (!state.inFight) {
-            service.lastAction = "fora"
-            return
-        }
-
-        val iGotHit = state.p1HealthPercent < lastP1Health - 1
-        val iDealtDamage = state.p2HealthPercent < lastP2Health - 1
-
-        if (iDealtDamage && lastZone != null && lastMove != null) {
-            reward(lastZone!!, lastMove!!)
-        }
-
-        lastP1Health = state.p1HealthPercent
-        lastP2Health = state.p2HealthPercent
-
-        val (zone, move) = decideMove(state, iGotHit)
-        lastZone = zone
-        lastMove = move
-        service.lastAction = shortLabel(move)
-        execute(service, move)
-    }
-
-    private fun shortLabel(move: String): String = when (move) {
-        "APPROACH" -> "AND"
-        "BLOCK" -> "DEF"
-        "QUICK_PUNCH" -> "SOC"
-        "POKE_KICK" -> "CHT"
-        "UPPERCUT" -> "UPP"
-        "STRING_3HIT" -> "CMB"
-        "SPECIAL" -> "ESP"
-        else -> move.take(3)
-    }
-
-    private fun decideMove(state: FightState, iGotHit: Boolean): Pair<String, String> {
-        if (iGotHit) return "DEFENSE" to "BLOCK"
-
-        return when (state.distance) {
-            Distance.FAR, Distance.UNKNOWN -> "FAR" to "APPROACH"
-            Distance.MID -> "MID" to pickMove("MID", listOf("POKE_KICK" to 0.5, "APPROACH" to 0.5))
-            Distance.CLOSE -> "CLOSE" to pickMove(
-                "CLOSE",
-                listOf("QUICK_PUNCH" to 0.35, "BLOCK" to 0.2, "UPPERCUT" to 0.25, "STRING_3HIT" to 0.2)
-            )
-        }
-    }
-
-    private fun pickMove(zone: String, options: List<Pair<String, Double>>): String {
-        val useHistory = Random.nextDouble() < 0.8
-        val best = if (useHistory) {
-            options.maxByOrNull { (name, base) -> moveScores["$zone:$name"]?.rate() ?: base }?.first
-        } else null
-        val chosen = best ?: weightedRandom(options)
-        moveScores.getOrPut("$zone:$chosen") { ActionScore() }.attempts++
-        return chosen
-    }
-
-    private fun weightedRandom(options: List<Pair<String, Double>>): String {
-        val total = options.sumOf { it.second }
-        var r = Random.nextDouble() * total
-        for ((name, weight) in options) {
-            if (r < weight) return name
-            r -= weight
-        }
-        return options.last().first
-    }
-
-    private fun reward(zone: String, move: String) {
-        moveScores["$zone:$move"]?.let { it.successes++ }
-    }
-
-    private fun execute(service: BotAccessibilityService, move: String) {
-        when (move) {
-            "APPROACH" -> service.tap(Action.RIGHT)
-            "BLOCK" -> service.tap(Action.BLOCK)
-            "QUICK_PUNCH" -> service.tap(Action.FRONT_PUNCH)
-            "POKE_KICK" -> service.tap(Action.FRONT_KICK)
-            "UPPERCUT" -> service.directionThenButton(Coordinates.DOWN, Coordinates.TRIANGLE)
-            "STRING_3HIT" -> service.sequence(
-                listOf(Action.BACK_PUNCH, Action.BACK_PUNCH, Action.FRONT_PUNCH),
-                stepDelayMs = 110L
-            )
-            "SPECIAL" -> service.tap(Action.SPECIAL)
-        }
+        val (action, label) = rotation[stepIndex % rotation.size]
+        stepIndex++
+        service.lastAction = label
+        service.tap(action)
     }
 }
 
