@@ -23,6 +23,7 @@ class BotAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        MemoryManager.init(applicationContext)
         toast("MK Bot: serviço conectado")
     }
 
@@ -62,7 +63,8 @@ class BotAccessibilityService : AccessibilityService() {
         if (!isRunning) return
         isRunning = false
         BotBrain.stop()
-        toast("MK Bot: parado")
+        MemoryManager.save()
+        toast("MK Bot: parado — progresso salvo")
     }
 
     private fun toast(msg: String) {
