@@ -2,13 +2,20 @@ package com.danicosta.mkbot
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.graphics.Color
 import android.graphics.Path
+import android.graphics.PixelFormat
 import android.graphics.PointF
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Button
 import android.widget.Toast
+import kotlin.math.abs
 
 class BotAccessibilityService : AccessibilityService() {
 
@@ -19,11 +26,14 @@ class BotAccessibilityService : AccessibilityService() {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var windowManager: WindowManager? = null
+    private var overlayButton: Button? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         MemoryManager.init(applicationContext)
+        addOverlayButton()
         toast("MK Bot: serviço conectado")
     }
 
@@ -31,6 +41,7 @@ class BotAccessibilityService : AccessibilityService() {
         super.onDestroy()
         isRunning = false
         BotBrain.stop()
+        removeOverlayButton()
         instance = null
     }
 
@@ -41,6 +52,7 @@ class BotAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        // Fica como reforço — se o emulador não disputar as teclas de volume no seu caso, também funciona.
         val isVolumeKey = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
             event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
         if (!isVolumeKey) return false
@@ -52,10 +64,92 @@ class BotAccessibilityService : AccessibilityService() {
         return true
     }
 
+    // ---- Botão flutuante: forma principal e confiável de ligar/desligar ----
+
+    private fun addOverlayButton() {
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        windowManager = wm
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 20
+            y = 300
+        }
+
+        val button = Button(this).apply {
+            text = "▶"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#CC2E7D32"))
+        }
+        overlayButton = button
+
+        var startX = 0f
+        var startY = 0f
+        var startTouchX = 0f
+        var startTouchY = 0f
+        var moved = false
+
+        button.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = params.x.toFloat()
+                    startY = params.y.toFloat()
+                    startTouchX = event.rawX
+                    startTouchY = event.rawY
+                    moved = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - startTouchX
+                    val dy = event.rawY - startTouchY
+                    if (abs(dx) > 12 || abs(dy) > 12) moved = true
+                    params.x = (startX + dx).toInt()
+                    params.y = (startY + dy).toInt()
+                    windowManager?.updateViewLayout(button, params)
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) toggleBot()
+                    true
+                }
+                else -> false
+            }
+        }
+
+        wm.addView(button, params)
+    }
+
+    private fun removeOverlayButton() {
+        overlayButton?.let { windowManager?.removeView(it) }
+        overlayButton = null
+    }
+
+    private fun toggleBot() {
+        if (isRunning) stopBot() else startBot()
+    }
+
+    private fun updateOverlayLabel() {
+        mainHandler.post {
+            overlayButton?.text = if (isRunning) "■" else "▶"
+            overlayButton?.setBackgroundColor(
+                Color.parseColor(if (isRunning) "#CCC62828" else "#CC2E7D32")
+            )
+        }
+    }
+
     private fun startBot() {
         if (isRunning) return
         isRunning = true
         BotBrain.start()
+        updateOverlayLabel()
         toast("MK Bot: jogando")
     }
 
@@ -64,6 +158,7 @@ class BotAccessibilityService : AccessibilityService() {
         isRunning = false
         BotBrain.stop()
         MemoryManager.save()
+        updateOverlayLabel()
         toast("MK Bot: parado — progresso salvo")
     }
 
