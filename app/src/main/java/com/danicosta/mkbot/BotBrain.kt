@@ -43,7 +43,10 @@ object BotBrain {
         MemoryManager.addElapsedMillis(MainActivity.CURRENT_CHARACTER, TICK_MS)
 
         val state = GameStateReader.read()
-        if (!state.inFight) return
+        if (!state.inFight) {
+            service.lastAction = "fora"
+            return
+        }
 
         val iGotHit = state.p1HealthPercent < lastP1Health - 1
         val iDealtDamage = state.p2HealthPercent < lastP2Health - 1
@@ -58,7 +61,19 @@ object BotBrain {
         val (zone, move) = decideMove(state, iGotHit)
         lastZone = zone
         lastMove = move
+        service.lastAction = shortLabel(move)
         execute(service, move)
+    }
+
+    private fun shortLabel(move: String): String = when (move) {
+        "APPROACH" -> "AND"
+        "BLOCK" -> "DEF"
+        "QUICK_PUNCH" -> "SOC"
+        "POKE_KICK" -> "CHT"
+        "UPPERCUT" -> "UPP"
+        "STRING_3HIT" -> "CMB"
+        "SPECIAL" -> "ESP"
+        else -> move.take(3)
     }
 
     private fun decideMove(state: FightState, iGotHit: Boolean): Pair<String, String> {
