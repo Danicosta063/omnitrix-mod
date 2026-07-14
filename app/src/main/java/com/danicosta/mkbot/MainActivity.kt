@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -16,6 +18,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 
 class MainActivity : ComponentActivity() {
 
@@ -61,7 +64,7 @@ class MainActivity : ComponentActivity() {
                 )
                 prefs.edit().putString(KEY_FOLDER_URI, uri.toString()).apply()
                 MemoryManager.load()
-                Toast.makeText(this, "Pasta de memória escolhida", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Pasta de memória escolhida, carregando...", Toast.LENGTH_SHORT).show()
             }
             refreshStatus()
         }
@@ -69,6 +72,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        MemoryManager.onLoaded = { refreshStatus() }
         MemoryManager.init(applicationContext)
         setContentView(buildLayout())
 
@@ -122,9 +126,14 @@ class MainActivity : ComponentActivity() {
             text = "Escolher Pasta de Memória"
             setOnClickListener { folderLauncher.launch(null) }
         }
+        val btnDebugFrame = Button(this).apply {
+            text = "Salvar Captura Atual (diagnóstico)"
+            setOnClickListener { saveDebugFrame() }
+        }
         root.addView(btnAccessibility)
         root.addView(btnCapture)
         root.addView(btnFolder)
+        root.addView(btnDebugFrame)
 
         root.addView(spacer())
 
@@ -146,6 +155,31 @@ class MainActivity : ComponentActivity() {
     private fun spacer(): TextView = TextView(this).apply {
         text = ""
         setPadding(0, 24, 0, 24)
+    }
+
+    private fun saveDebugFrame() {
+        val frame = ScreenCaptureService.latestFrame
+        if (frame == null) {
+            Toast.makeText(this, "Nenhum quadro capturado ainda — a captura pode não estar ativa de verdade", Toast.LENGTH_LONG).show()
+            return
+        }
+        val folderUriString = prefs.getString(KEY_FOLDER_URI, null)
+        if (folderUriString == null) {
+            Toast.makeText(this, "Escolhe a pasta de memória primeiro", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val root = DocumentFile.fromTreeUri(this, Uri.parse(folderUriString))
+        val fileName = "mkbot_debug_frame.png"
+        root?.findFile(fileName)?.delete()
+        val newFile = root?.createFile("image/png", fileName)
+        if (newFile != null) {
+            contentResolver.openOutputStream(newFile.uri)?.use { out ->
+                frame.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            Toast.makeText(this, "Print salvo na pasta de memória: $fileName", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "Erro ao salvar o print", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun refreshStatus() {
