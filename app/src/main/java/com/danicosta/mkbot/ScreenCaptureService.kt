@@ -18,6 +18,7 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.view.Display
+import android.view.Surface
 import androidx.core.app.NotificationCompat
 
 class ScreenCaptureService : Service() {
@@ -25,7 +26,7 @@ class ScreenCaptureService : Service() {
     companion object {
         private const val CHANNEL_ID = "mkbot_capture_channel"
         private const val NOTIFICATION_ID = 1001
-        private const val TARGET_FRAME_INTERVAL_MS = 66L // ~15 quadros/seg, de sobra pra ler estado de luta
+        private const val TARGET_FRAME_INTERVAL_MS = 66L
 
         @Volatile
         var latestFrame: Bitmap? = null
@@ -95,9 +96,18 @@ class ScreenCaptureService : Service() {
         @Suppress("DEPRECATION")
         display.getRealMetrics(metrics)
 
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
+        var width = metrics.widthPixels
+        var height = metrics.heightPixels
         val density = metrics.densityDpi
+
+        // Em Service, getRealMetrics às vezes devolve o tamanho "natural" (retrato) mesmo com a
+        // tela girada pra paisagem. Corrige comparando com a rotação atual de verdade.
+        val isLandscapeRotation = display.rotation == Surface.ROTATION_90 || display.rotation == Surface.ROTATION_270
+        if (isLandscapeRotation && height > width) {
+            val temp = width
+            width = height
+            height = temp
+        }
 
         val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         imageReader = reader
