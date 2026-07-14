@@ -15,6 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
 
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
             if (result.resultCode == RESULT_OK && result.data != null) {
                 projectionResultCode = result.resultCode
                 projectionResultData = result.data
+                ContextCompat.startForegroundService(this, Intent(this, ScreenCaptureService::class.java))
                 Toast.makeText(this, "Captura de tela liberada", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Captura de tela negada", Toast.LENGTH_SHORT).show()
@@ -151,8 +153,7 @@ class MainActivity : ComponentActivity() {
         val accessibilityOn = enabledServices.contains(ACCESSIBILITY_SERVICE_ID)
         statusAccessibility.text = "Acessibilidade: " + if (accessibilityOn) "ativada" else "desativada"
 
-        val captureOn = projectionResultData != null
-        statusCapture.text = "Captura de tela: " + if (captureOn) "liberada" else "não liberada"
+        statusCapture.text = "Captura de tela: " + if (ScreenCaptureService.isCapturing) "ativa" else "não liberada"
 
         val folderUri = prefs.getString(KEY_FOLDER_URI, null)
         statusFolder.text = "Pasta de memória: " + if (folderUri != null) "escolhida" else "não escolhida"
