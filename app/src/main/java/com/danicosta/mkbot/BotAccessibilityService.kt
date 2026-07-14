@@ -174,9 +174,12 @@ class BotAccessibilityService : AccessibilityService() {
         mainHandler.post { Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show() }
     }
 
-    fun tap(point: PointF, durationMs: Long = 50L) {
+    fun tap(point: PointF, durationMs: Long = 90L) {
         mainHandler.post {
-            val path = Path().apply { moveTo(point.x, point.y) }
+            val path = Path().apply {
+                moveTo(point.x, point.y)
+                lineTo(point.x + 1f, point.y + 1f) // evita path de comprimento zero
+            }
             val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
             val queued = dispatchGesture(gesture, object : GestureResultCallback() {
@@ -191,20 +194,23 @@ class BotAccessibilityService : AccessibilityService() {
         }
     }
 
-    fun tap(action: Action, durationMs: Long = 50L) = tap(action.toPoint(), durationMs)
+    fun tap(action: Action, durationMs: Long = 90L) = tap(action.toPoint(), durationMs)
 
-    fun multiTap(points: List<PointF>, durationMs: Long = 50L) {
+    fun multiTap(points: List<PointF>, durationMs: Long = 90L) {
         mainHandler.post {
             val builder = GestureDescription.Builder()
             points.forEach { p ->
-                val path = Path().apply { moveTo(p.x, p.y) }
+                val path = Path().apply {
+                    moveTo(p.x, p.y)
+                    lineTo(p.x + 1f, p.y + 1f)
+                }
                 builder.addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             }
             dispatchGesture(builder.build(), null, null)
         }
     }
 
-    fun sequence(actions: List<Action>, stepDelayMs: Long = 120L) {
+    fun sequence(actions: List<Action>, stepDelayMs: Long = 150L) {
         actions.forEachIndexed { index, action ->
             mainHandler.postDelayed({ tap(action) }, index * stepDelayMs)
         }
@@ -215,12 +221,12 @@ class BotAccessibilityService : AccessibilityService() {
         button: PointF,
         holdMs: Long = 220L,
         pressAtMs: Long = 100L,
-        pressDurationMs: Long = 50L
+        pressDurationMs: Long = 90L
     ) {
         mainHandler.post {
-            val dirPath = Path().apply { moveTo(direction.x, direction.y) }
+            val dirPath = Path().apply { moveTo(direction.x, direction.y); lineTo(direction.x + 1f, direction.y) }
             val dirStroke = GestureDescription.StrokeDescription(dirPath, 0, holdMs)
-            val btnPath = Path().apply { moveTo(button.x, button.y) }
+            val btnPath = Path().apply { moveTo(button.x, button.y); lineTo(button.x + 1f, button.y) }
             val btnStroke = GestureDescription.StrokeDescription(btnPath, pressAtMs, pressDurationMs)
             val gesture = GestureDescription.Builder().addStroke(dirStroke).addStroke(btnStroke).build()
             dispatchGesture(gesture, null, null)
