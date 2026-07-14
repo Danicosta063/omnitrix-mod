@@ -29,11 +29,12 @@ class BotAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        BotBrain.stop()
         instance = null
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Não usamos a árvore de acessibilidade — a visão vem da captura de tela (próximo arquivo).
+        // Não usamos a árvore de acessibilidade — a visão vem da captura de tela.
     }
 
     override fun onInterrupt() {}
@@ -47,26 +48,26 @@ class BotAccessibilityService : AccessibilityService() {
             if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) startBot()
             if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) stopBot()
         }
-        return true // consome os dois pra não mexer no volume real do aparelho
+        return true
     }
 
     private fun startBot() {
         if (isRunning) return
         isRunning = true
+        BotBrain.start()
         toast("MK Bot: jogando")
     }
 
     private fun stopBot() {
         if (!isRunning) return
         isRunning = false
+        BotBrain.stop()
         toast("MK Bot: parado")
     }
 
     private fun toast(msg: String) {
         mainHandler.post { Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show() }
     }
-
-    // ---- Toques na tela ----
 
     fun tap(point: PointF, durationMs: Long = 50L) {
         mainHandler.post {
@@ -95,7 +96,6 @@ class BotAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Segura uma direção e, ainda segurando, toca no botão — o padrão "baixo + triângulo" da Ashrah. */
     fun directionThenButton(
         direction: PointF,
         button: PointF,
