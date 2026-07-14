@@ -2,11 +2,12 @@ package com.danicosta.mkbot
 
 import android.os.Handler
 import android.os.HandlerThread
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
 object BotBrain {
 
-    private const val TICK_MS = 180L // ritmo de decisão — menor que isso não ajuda, o toque já leva 150-300ms
+    private const val TICK_MS = 180L
 
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
@@ -15,9 +16,7 @@ object BotBrain {
     private var lastZone: String? = null
     private var lastMove: String? = null
 
-    // pontuação "zona:golpe" -> favorece o que funciona. Fica só na memória RAM por enquanto;
-    // gravar num arquivo persistente é o próximo passo.
-    val moveScores: MutableMap<String, ActionScore> = mutableMapOf()
+    val moveScores: MutableMap<String, ActionScore> = ConcurrentHashMap()
 
     fun start() {
         if (handlerThread != null) return
@@ -41,6 +40,8 @@ object BotBrain {
 
     private fun tick() {
         val service = BotAccessibilityService.instance ?: return
+        MemoryManager.addElapsedMillis(MainActivity.CURRENT_CHARACTER, TICK_MS)
+
         val state = GameStateReader.read()
         if (!state.inFight) return
 
@@ -61,7 +62,6 @@ object BotBrain {
     }
 
     private fun decideMove(state: FightState, iGotHit: Boolean): Pair<String, String> {
-        // acabou de apanhar -> bloqueia primeiro, decide depois
         if (iGotHit) return "DEFENSE" to "BLOCK"
 
         return when (state.distance) {
