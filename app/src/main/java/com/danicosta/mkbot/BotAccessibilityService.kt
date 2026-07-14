@@ -29,6 +29,16 @@ class BotAccessibilityService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var overlayButton: Button? = null
 
+    @Volatile var lastAction: String = "-"
+    @Volatile var lastGestureStatus: String = ""
+
+    private val labelTicker = object : Runnable {
+        override fun run() {
+            updateOverlayLabel()
+            mainHandler.postDelayed(this, 300L)
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -41,30 +51,25 @@ class BotAccessibilityService : AccessibilityService() {
         super.onDestroy()
         isRunning = false
         BotBrain.stop()
+        mainHandler.removeCallbacks(labelTicker)
         removeOverlayButton()
         instance = null
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Não usamos a árvore de acessibilidade — a visão vem da captura de tela.
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        // Fica como reforço — se o emulador não disputar as teclas de volume no seu caso, também funciona.
         val isVolumeKey = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
             event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
         if (!isVolumeKey) return false
-
         if (event.action == KeyEvent.ACTION_DOWN) {
             if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) startBot()
             if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) stopBot()
         }
         return true
     }
-
-    // ---- Botão flutuante: forma principal e confiável de ligar/desligar ----
 
     private fun addOverlayButton() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -85,7 +90,7 @@ class BotAccessibilityService : AccessibilityService() {
 
         val button = Button(this).apply {
             text = "▶"
-            textSize = 18f
+            textSize = 13f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#CC2E7D32"))
         }
@@ -138,7 +143,7 @@ class BotAccessibilityService : AccessibilityService() {
 
     private fun updateOverlayLabel() {
         mainHandler.post {
-            overlayButton?.text = if (isRunning) "■" else "▶"
+            overlayButton?.text = if (isRunning) "$lastAction$lastGestureStatus" else "▶"
             overlayButton?.setBackgroundColor(
                 Color.parseColor(if (isRunning) "#CCC62828" else "#CC2E7D32")
             )
@@ -148,8 +153,10 @@ class BotAccessibilityService : AccessibilityService() {
     private fun startBot() {
         if (isRunning) return
         isRunning = true
+        lastAction = "..."
+        lastGestureStatus = ""
         BotBrain.start()
-        updateOverlayLabel()
+        mainHandler.post(labelTicker)
         toast("MK Bot: jogando")
     }
 
@@ -157,6 +164,7 @@ class BotAccessibilityService : AccessibilityService() {
         if (!isRunning) return
         isRunning = false
         BotBrain.stop()
+        mainHandler.removeCallbacks(labelTicker)
         MemoryManager.save()
         updateOverlayLabel()
         toast("MK Bot: parado — progresso salvo")
@@ -170,7 +178,16 @@ class BotAccessibilityService : AccessibilityService() {
         mainHandler.post {
             val path = Path().apply { moveTo(point.x, point.y) }
             val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
-            dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            val queued = dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    lastGestureStatus = ""
+                }
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    lastGestureStatus = " X"
+                }
+            }, null)
+            if (!queued) lastGestureStatus = " X!"
         }
     }
 
