@@ -18,7 +18,6 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.view.Display
-import android.view.Surface
 import androidx.core.app.NotificationCompat
 
 class ScreenCaptureService : Service() {
@@ -96,18 +95,12 @@ class ScreenCaptureService : Service() {
         @Suppress("DEPRECATION")
         display.getRealMetrics(metrics)
 
-        var width = metrics.widthPixels
-        var height = metrics.heightPixels
+        // Esse bot só existe pra jogo em paisagem — força o maior lado como largura sempre,
+        // em vez de confiar na orientação relatada no instante em que o serviço liga
+        // (que pode ainda estar em retrato, com o MK Bot em primeiro plano).
+        val width = maxOf(metrics.widthPixels, metrics.heightPixels)
+        val height = minOf(metrics.widthPixels, metrics.heightPixels)
         val density = metrics.densityDpi
-
-        // Em Service, getRealMetrics às vezes devolve o tamanho "natural" (retrato) mesmo com a
-        // tela girada pra paisagem. Corrige comparando com a rotação atual de verdade.
-        val isLandscapeRotation = display.rotation == Surface.ROTATION_90 || display.rotation == Surface.ROTATION_270
-        if (isLandscapeRotation && height > width) {
-            val temp = width
-            width = height
-            height = temp
-        }
 
         val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         imageReader = reader
