@@ -131,15 +131,23 @@ class MainActivity : ComponentActivity() {
             text = "Salvar Captura Atual (diagnóstico)"
             setOnClickListener { saveDebugFrame() }
         }
-        val btnTestTap = Button(this).apply {
-            text = "Testar 1 Toque no Pause do Jogo"
-            setOnClickListener { testPauseTap() }
+        val btnTestNoOverlay = Button(this).apply {
+            text = "Testar Pause SEM Overlay"
+            setOnClickListener {
+                val service = BotAccessibilityService.instance
+                if (service == null) {
+                    Toast.makeText(this@MainActivity, "Ative a Acessibilidade primeiro", Toast.LENGTH_SHORT).show()
+                } else {
+                    service.testPauseWithoutOverlay(PointF(2295f, 50f))
+                    Toast.makeText(this@MainActivity, "Volta pro jogo AGORA — o botão vai sumir e testar sozinho", Toast.LENGTH_LONG).show()
+                }
+            }
         }
         root.addView(btnAccessibility)
         root.addView(btnCapture)
         root.addView(btnFolder)
         root.addView(btnDebugFrame)
-        root.addView(btnTestTap)
+        root.addView(btnTestNoOverlay)
 
         root.addView(spacer())
 
@@ -161,17 +169,6 @@ class MainActivity : ComponentActivity() {
     private fun spacer(): TextView = TextView(this).apply {
         text = ""
         setPadding(0, 24, 0, 24)
-    }
-
-    private fun testPauseTap() {
-        val service = BotAccessibilityService.instance
-        if (service == null) {
-            Toast.makeText(this, "Ative a Acessibilidade primeiro", Toast.LENGTH_SHORT).show()
-            return
-        }
-        // Estimativa do ícone de pause (canto superior direito, ⏸). Se errar o alvo, é só ajustar o X/Y.
-        service.tap(PointF(2295f, 50f))
-        Toast.makeText(this, "Toque de teste enviado — volta pro jogo e vê se pausou", Toast.LENGTH_LONG).show()
     }
 
     private fun saveDebugFrame() {
