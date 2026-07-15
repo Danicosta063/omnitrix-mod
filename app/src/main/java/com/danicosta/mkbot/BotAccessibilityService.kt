@@ -1,6 +1,7 @@
 package com.danicosta.mkbot
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Color
 import android.graphics.Path
@@ -42,6 +43,14 @@ class BotAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+
+        // Reforça as flags do serviço por código, além do XML.
+        serviceInfo = serviceInfo?.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS or
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            notificationTimeout = 100
+        }
+
         MemoryManager.init(applicationContext)
         addOverlayButton()
         toast("MK Bot: serviço conectado")
@@ -69,6 +78,15 @@ class BotAccessibilityService : AccessibilityService() {
             if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) stopBot()
         }
         return true
+    }
+
+    // ---- teste isolado: some com o overlay, toca, e devolve o overlay depois ----
+    fun testPauseWithoutOverlay(point: PointF) {
+        removeOverlayButton()
+        mainHandler.postDelayed({
+            tap(point)
+            mainHandler.postDelayed({ addOverlayButton() }, 1200)
+        }, 500)
     }
 
     private fun addOverlayButton() {
@@ -133,7 +151,9 @@ class BotAccessibilityService : AccessibilityService() {
     }
 
     private fun removeOverlayButton() {
-        overlayButton?.let { windowManager?.removeView(it) }
+        overlayButton?.let {
+            try { windowManager?.removeView(it) } catch (e: Exception) { }
+        }
         overlayButton = null
     }
 
@@ -178,7 +198,7 @@ class BotAccessibilityService : AccessibilityService() {
         mainHandler.post {
             val path = Path().apply {
                 moveTo(point.x, point.y)
-                lineTo(point.x + 1f, point.y + 1f) // evita path de comprimento zero
+                lineTo(point.x + 1f, point.y + 1f)
             }
             val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
