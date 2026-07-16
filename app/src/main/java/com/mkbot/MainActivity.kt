@@ -12,10 +12,13 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.mkbot.capture.ScreenCaptureService
+import com.mkbot.engine.BotEngine
 
 class MainActivity : Activity() {
 
     private lateinit var statusText: TextView
+    private lateinit var botButton: Button
+    private var botRunning = false
 
     companion object {
         private const val REQUEST_SCREEN_CAPTURE = 1001
@@ -47,6 +50,21 @@ class MainActivity : Activity() {
             text = "3. Iniciar captura de tela"
             setOnClickListener { requestScreenCapturePermission() }
         })
+
+        botButton = Button(this).apply { text = "4. Iniciar bot" }
+        botButton.setOnClickListener {
+            botRunning = !botRunning
+            if (botRunning) {
+                BotEngine.start()
+                botButton.text = "4. Parar bot"
+                updateStatus("bot rodando")
+            } else {
+                BotEngine.stop()
+                botButton.text = "4. Iniciar bot"
+                updateStatus("bot parado")
+            }
+        }
+        root.addView(botButton)
 
         setContentView(root)
 
