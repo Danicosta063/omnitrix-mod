@@ -11,6 +11,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.mkbot.capture.ScreenCaptureService
 
 class MainActivity : Activity() {
 
@@ -63,8 +64,6 @@ class MainActivity : Activity() {
     }
 
     private fun openAccessibilitySettings() {
-        // BotAccessibilityService ainda não existe — quando existir, também
-        // vamos conferir Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES aqui.
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         Toast.makeText(this, "Ative o MK Bot na lista de serviços", Toast.LENGTH_LONG).show()
     }
@@ -79,13 +78,12 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_SCREEN_CAPTURE) {
             if (resultCode == RESULT_OK && data != null) {
-                updateStatus("captura de tela: permissão concedida")
-                // TODO: quando o ScreenCaptureService.kt existir, chamar aqui:
-                // val intent = Intent(this, ScreenCaptureService::class.java).apply {
-                //     putExtra("resultCode", resultCode)
-                //     putExtra("data", data)
-                // }
-                // startForegroundService(intent)
+                updateStatus("captura de tela: rodando")
+                val intent = Intent(this, ScreenCaptureService::class.java).apply {
+                    putExtra("resultCode", resultCode)
+                    putExtra("data", data)
+                }
+                startForegroundService(intent)
             } else {
                 updateStatus("captura de tela: negado")
             }
