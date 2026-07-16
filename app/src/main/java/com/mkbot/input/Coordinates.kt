@@ -3,25 +3,22 @@ package com.mkbot.input
 import com.mkbot.ai.Button
 import com.mkbot.ai.ScreenDir
 
-/**
- * Posições reais de toque na tela — específicas do seu aparelho e do
- * layout do controle virtual do emulador. PRECISA CALIBRAR: tira um
- * print do emulador aberto, mede onde cada botão/direção cai em pixel,
- * e substitui os valores abaixo.
- */
+/** Lido direto do print do controle no NetherSX2, resolução 2400x1080. */
 object Coordinates {
 
-    private val dpadUp = 100f to 800f       // TODO: calibrar
-    private val dpadDown = 100f to 950f     // TODO: calibrar
-    private val dpadLeft = 30f to 875f      // TODO: calibrar
-    private val dpadRight = 170f to 875f    // TODO: calibrar
+    private val dpadUp = 360f to 918f
+    private val dpadDown = 360f to 616f
+    private val dpadLeft = 504f to 767f
+    private val dpadRight = 216f to 767f
 
-    private val square = 900f to 900f       // TODO: calibrar
-    private val triangle = 950f to 820f     // TODO: calibrar
-    private val cross = 1000f to 900f       // TODO: calibrar
-    private val circle = 950f to 980f       // TODO: calibrar
-    private val l1 = 60f to 100f            // TODO: calibrar
-    private val r1 = 1020f to 100f          // TODO: calibrar
+    private val square = 1992f to 767f
+    private val triangle = 2136f to 616f
+    private val cross = 2136f to 918f
+    private val circle = 2280f to 767f
+    private val l1 = 360f to 367f
+    private val l2 = 360f to 216f
+    private val r1 = 2040f to 367f
+    private val r2 = 2040f to 216f
 
     fun forDir(dir: ScreenDir): Pair<Float, Float> = when (dir) {
         ScreenDir.UP -> dpadUp
@@ -36,6 +33,8 @@ object Coordinates {
         Button.CROSS -> cross
         Button.CIRCLE -> circle
         Button.L1 -> l1
+        Button.L2 -> l2
         Button.R1 -> r1
+        Button.R2 -> r2
     }
 }
