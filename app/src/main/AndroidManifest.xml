@@ -19,8 +19,12 @@
             </intent-filter>
         </activity>
 
-        <!-- ScreenCaptureService e BotAccessibilityService entram aqui
-             quando escrevermos esses arquivos -->
+        <service
+            android:name=".capture.ScreenCaptureService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+
+        <!-- BotAccessibilityService entra aqui no próximo arquivo -->
 
     </application>
 
