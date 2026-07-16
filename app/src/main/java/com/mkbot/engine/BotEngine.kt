@@ -17,21 +17,20 @@ import com.mkbot.input.BotAccessibilityService
 import com.mkbot.input.Coordinates
 import com.mkbot.vision.TemplateMatcher
 
-/** Junta as três partes: enxerga (TemplateMatcher), decide (CombatStateMachine), age (AccessibilityService). */
 object BotEngine {
 
     private const val TICK_MS = 100L
-    private var facing = Facing.RIGHT   // TODO: detectar de verdade; por enquanto fixo
+    private var facing = Facing.RIGHT   // TODO: detectar de verdade
     private var running = false
 
     private val thread = HandlerThread("BotEngineThread").apply { start() }
     private val handler = Handler(thread.looper)
 
-    // ==== CALIBRAR ANTES DE USAR ====
-    private val myHealthRegion = Rect(50, 60, 500, 75)
-    private val opponentHealthRegion = Rect(580, 60, 1030, 75)
-    private const val HEALTH_FULL_COLOR = 0xFF00CC00.toInt()
-    // =================================
+    // Lido do pixel do print — Scorpion vs Mileena, ambos a 100%.
+    // Esquerda = seu personagem, direita = oponente.
+    private val myHealthRegion = Rect(700, 100, 1140, 125)
+    private val opponentHealthRegion = Rect(1340, 100, 1840, 125)
+    private const val HEALTH_FULL_COLOR = 0xFF15F822.toInt()
 
     fun start() {
         if (running) return
@@ -39,36 +38,27 @@ object BotEngine {
         handler.post(::tick)
     }
 
-    fun stop() {
-        running = false
-    }
+    fun stop() { running = false }
 
     private fun tick() {
         if (!running) return
-
         val frame = ScreenCaptureService.latestFrame
         if (frame != null && BotAccessibilityService.isReady) {
-            val state = detectState(frame)
-            execute(CombatStateMachine.decide(state))
+            execute(CombatStateMachine.decide(detectState(frame)))
         }
-
         handler.postDelayed(::tick, TICK_MS)
     }
 
     private fun detectState(frame: Bitmap): CombatState {
         val myHp = TemplateMatcher.readHealthPercent(frame, myHealthRegion, HEALTH_FULL_COLOR)
         val oppHp = TemplateMatcher.readHealthPercent(frame, opponentHealthRegion, HEALTH_FULL_COLOR)
-
-        // TODO: virar template match real quando tiver print do golpe do oponente
-        val opponentAttacking = false
-        val inRange = true
-
-        return CombatState(myHp, oppHp, opponentAttacking, inRange)
+        // TODO: template match real quando tiver print do golpe do oponente
+        return CombatState(myHp, oppHp, opponentAttacking = false, inRange = true)
     }
 
     private fun execute(action: BotAction) {
         when (action) {
-            BotAction.BLOCK -> tapButton(Button.R1)
+            BotAction.BLOCK -> tapButton(Button.R2)
             BotAction.PUNCH -> tapButton(Button.SQUARE)
             BotAction.KICK -> tapButton(Button.CROSS)
             BotAction.SPECIAL -> executeMove(AshrahMoves.naturesTorpedo)
@@ -79,9 +69,8 @@ object BotEngine {
     }
 
     private fun executeMove(move: SpecialMove) {
-        val steps = AshrahMoves.resolve(move, facing)
         var delay = 0L
-        for (step in steps) {
+        for (step in AshrahMoves.resolve(move, facing)) {
             handler.postDelayed({
                 step.dir?.let { tapDir(it) }
                 step.button?.let { tapButton(it) }
