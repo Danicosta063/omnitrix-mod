@@ -24,7 +24,17 @@
             android:foregroundServiceType="mediaProjection"
             android:exported="false" />
 
-        <!-- BotAccessibilityService entra aqui no próximo arquivo -->
+        <service
+            android:name=".input.BotAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice.config"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
     </application>
 
