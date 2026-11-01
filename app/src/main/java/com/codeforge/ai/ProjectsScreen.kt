@@ -461,10 +461,12 @@ fun ProjectsScreen(
 
                                         try {
                                             val result =
-                                                zipImporter.importProject(
-                                                    uri,
-                                                    name
-                                                )
+                                                withContext(Dispatchers.IO) {
+                                                    zipImporter.importProject(
+                                                        uri,
+                                                        name
+                                                    )
+                                                }
 
                                             result.fold(
                                                 onSuccess = {
@@ -532,6 +534,7 @@ fun ProjectsScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !busy,
                     onClick = {
                         try {
                             val target = project
@@ -546,6 +549,8 @@ fun ProjectsScreen(
                             refreshProjects()
                             dialogAction = ""
                             selectedProject = null
+                            successMessage =
+                                "Projeto excluído com sucesso!"
                         } catch (e: Exception) {
                             errorMessage = e.message
                                 ?: "Erro ao excluir projeto."
@@ -553,4 +558,64 @@ fun ProjectsScreen(
                     }
                 ) {
                     Text("Excluir")
-             
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        dialogAction = ""
+                        selectedProject = null
+                    }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    errorMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = {
+                errorMessage = null
+            },
+            title = {
+                Text("Erro")
+            },
+            text = {
+                Text(message)
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        errorMessage = null
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    successMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = {
+                successMessage = null
+            },
+            title = {
+                Text("Sucesso")
+            },
+            text = {
+                Text(message)
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        successMessage = null
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+}
