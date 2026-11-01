@@ -7,21 +7,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,21 +26,28 @@ fun CodeEditorScreen(
     project: CodeProject,
     filePath: String,
     projectManager: ProjectManager,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenAI: () -> Unit = {}
 ) {
-    var code by remember(project.id, filePath) {
+    var code by remember(
+        project.id,
+        filePath
+    ) {
         mutableStateOf("")
     }
 
-    var savedCode by remember(project.id, filePath) {
+    var savedCode by remember(
+        project.id,
+        filePath
+    ) {
         mutableStateOf("")
     }
 
-    var loaded by remember(project.id, filePath) {
-        mutableStateOf(false)
+    var loadError by remember {
+        mutableStateOf<String?>(null)
     }
 
-    var errorMessage by remember {
+    var message by remember {
         mutableStateOf<String?>(null)
     }
 
@@ -51,13 +55,21 @@ fun CodeEditorScreen(
         mutableStateOf(false)
     }
 
-    var statusMessage by remember {
-        mutableStateOf("")
+    var showAIDialog by remember {
+        mutableStateOf(false)
     }
 
-    val hasUnsavedChanges = loaded && code != savedCode
+    var showErrorDialog by remember {
+        mutableStateOf(false)
+    }
 
-    LaunchedEffect(project.id, filePath) {
+    var showSaveMessage by remember {
+        mutableStateOf(false)
+    }
+
+    val hasChanges = code != savedCode
+
+    fun reloadFile() {
         try {
             val content = projectManager.readFile(
                 project.id,
@@ -66,16 +78,15 @@ fun CodeEditorScreen(
 
             code = content
             savedCode = content
-            loaded = true
-            statusMessage = ""
+            loadError = null
         } catch (e: Exception) {
-            errorMessage = e.message
+            loadError = e.message
                 ?: "Não foi possível abrir o arquivo."
         }
     }
 
-    fun saveCode() {
-        try {
+    fun saveFile(): Boolean {
+        return try {
             projectManager.saveFile(
                 project.id,
                 filePath,
@@ -83,19 +94,30 @@ fun CodeEditorScreen(
             )
 
             savedCode = code
-            statusMessage = "Arquivo salvo com sucesso."
+            message = "Arquivo salvo com sucesso!"
+            showSaveMessage = true
+            true
         } catch (e: Exception) {
-            errorMessage = e.message
-                ?: "Não foi possível salvar o arquivo."
+            message = e.message
+                ?: "Erro ao salvar arquivo."
+            showErrorDialog = true
+            false
         }
     }
 
     fun requestBack() {
-        if (hasUnsavedChanges) {
+        if (hasChanges) {
             showExitDialog = true
         } else {
             onBack()
         }
+    }
+
+    LaunchedEffect(
+        project.id,
+        filePath
+    ) {
+        reloadFile()
     }
 
     BackHandler {
@@ -108,24 +130,21 @@ fun CodeEditorScreen(
                 title = {
                     Column {
                         Text(
-                            filePath.substringAfterLast("/"),
-                            maxLines = 1
+                            filePath.substringAfterLast('/')
                         )
 
                         Text(
-                            if (hasUnsavedChanges) {
-                                "Alterações não salvas"
-                            } else {
-                                filePath
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1
+                            project.name,
+                            style = MaterialTheme
+                                .typography.bodySmall
                         )
                     }
                 },
                 navigationIcon = {
                     IconButton(
-                        onClick = { requestBack() }
+                        onClick = {
+                            requestBack()
+                        }
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
@@ -135,132 +154,157 @@ fun CodeEditorScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { saveCode() },
-                        enabled = loaded && hasUnsavedChanges
+                        onClick = {
+                            if (hasChanges) {
+                                showAIDialog = true
+                            } else {
+                                onOpenAI()
+                            }
+                        },
+                        enabled = loadError == null
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription =
+                                "Analisar arquivo com IA"
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            saveFile()
+                        },
+                        enabled = loadError == null &&
+                            hasChanges
                     ) {
                         Icon(
                             Icons.Default.Save,
-                            contentDescription = "Salvar"
+                            contentDescription = "Salvar arquivo"
                         )
                     }
                 }
             )
         },
         bottomBar = {
-            Column {
-                HorizontalDivider()
-
+            Surface(
+                tonalElevation = 2.dp
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = 10.dp
+                        ),
+                    horizontalArrangement =
+                        Arrangement.SpaceBetween,
+                    verticalAlignment =
+                        Alignment.CenterVertically
                 ) {
                     Text(
-                        if (hasUnsavedChanges) {
-                            "● Modificado"
+                        "Linhas: ${code.count { it == '\n' } + 1}",
+                        style = MaterialTheme
+                            .typography.bodySmall
+                    )
+
+                    Text(
+                        if (hasChanges) {
+                            "Não salvo"
                         } else {
-                            "✓ Salvo"
+                            "Salvo"
                         },
-                        style = MaterialTheme.typography.bodySmall
-                    )
-
-                    Text(
-                        "${code.count { it == '\n' } + 1} linhas",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                if (statusMessage.isNotBlank()) {
-                    Text(
-                        statusMessage,
-                        modifier = Modifier.padding(
-                            start = 10.dp,
-                            bottom = 8.dp
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                        style = MaterialTheme
+                            .typography.bodySmall,
+                        color = if (hasChanges) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
                     )
                 }
             }
         }
     ) { padding ->
 
-        if (!loaded) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Carregando arquivo...")
-            }
-        } else {
-            val verticalScrollState = rememberScrollState()
-            val horizontalScrollState = rememberScrollState()
-
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(verticalScrollState)
-                    .horizontalScroll(horizontalScrollState)
-                    .padding(12.dp)
-            ) {
-                val lineCount = code.count {
-                    it == '\n'
-                } + 1
-
-                Column(
-                    modifier = Modifier.padding(end = 12.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    for (line in 1..lineCount) {
-                        Text(
-                            text = line.toString(),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            color = Color.Gray
-                        )
-                    }
-                }
-
-                BasicTextField(
-                    value = code,
-                    onValueChange = {
-                        code = it
-                        statusMessage = ""
-                    },
-                    modifier = Modifier.widthIn(min = 320.dp),
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    ),
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.None,
-                        autoCorrectEnabled = false,
-                        keyboardType = KeyboardType.Text
-                    ),
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            if (code.isEmpty()) {
-                                Text(
-                                    "// Escreva seu código aqui",
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Color.Gray
-                                )
-                            }
-
-                            innerTextField()
-                        }
-                    }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (loadError != null) {
+                Text(
+                    text = loadError.orEmpty(),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp)
                 )
+            } else {
+                val verticalScroll = rememberScrollState()
+                val horizontalScroll = rememberScrollState()
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(verticalScroll)
+                        .horizontalScroll(horizontalScroll)
+                        .padding(12.dp)
+                ) {
+                    val lineCount = code.count {
+                        it == '\n'
+                    } + 1
+
+                    Text(
+                        text = (1..lineCount)
+                            .joinToString("\n"),
+                        style = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = MaterialTheme
+                                .typography.bodyMedium.fontSize,
+                            lineHeight = MaterialTheme
+                                .typography.bodyMedium.lineHeight,
+                            color = MaterialTheme
+                                .colorScheme.onSurfaceVariant
+                        )
+                    )
+
+                    Spacer(Modifier.width(12.dp))
+
+                    BasicTextField(
+                        value = code,
+                        onValueChange = {
+                            code = it
+                        },
+                        modifier = Modifier
+                            .widthIn(min = 280.dp),
+                        textStyle = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = MaterialTheme
+                                .typography.bodyMedium.fontSize,
+                            lineHeight = MaterialTheme
+                                .typography.bodyMedium.lineHeight,
+                            color = MaterialTheme
+                                .colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(
+                            MaterialTheme.colorScheme.primary
+                        ),
+                        decorationBox = { innerTextField ->
+                            Box(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (code.isEmpty()) {
+                                    Text(
+                                        "Digite seu código aqui...",
+                                        color = MaterialTheme
+                                            .colorScheme.onSurfaceVariant,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+
+                                innerTextField()
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -275,16 +319,14 @@ fun CodeEditorScreen(
             },
             text = {
                 Text(
-                    "Você modificou este arquivo. " +
-                        "Deseja salvar antes de sair?"
+                    "Deseja salvar suas alterações " +
+                        "antes de sair?"
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        saveCode()
-
-                        if (code == savedCode) {
+                        if (saveFile()) {
                             showExitDialog = false
                             onBack()
                         }
@@ -298,39 +340,101 @@ fun CodeEditorScreen(
                     TextButton(
                         onClick = {
                             showExitDialog = false
+                            onBack()
                         }
                     ) {
-                        Text("Cancelar")
+                        Text("Descartar")
                     }
 
                     TextButton(
                         onClick = {
                             showExitDialog = false
-                            onBack()
                         }
                     ) {
-                        Text("Descartar")
+                        Text("Cancelar")
                     }
                 }
             }
         )
     }
 
-    errorMessage?.let { error ->
+    if (showAIDialog) {
         AlertDialog(
             onDismissRequest = {
-                errorMessage = null
+                showAIDialog = false
+            },
+            title = {
+                Text("Salvar antes de usar IA?")
+            },
+            text = {
+                Text(
+                    "O assistente analisa a versão salva " +
+                        "do arquivo. Deseja salvar suas " +
+                        "alterações antes de continuar?"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (saveFile()) {
+                            showAIDialog = false
+                            onOpenAI()
+                        }
+                    }
+                ) {
+                    Text("Salvar e abrir IA")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAIDialog = false
+                    }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (showErrorDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showErrorDialog = false
             },
             title = {
                 Text("Erro")
             },
             text = {
-                Text(error)
+                Text(message.orEmpty())
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        errorMessage = null
+                        showErrorDialog = false
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    if (showSaveMessage) {
+        AlertDialog(
+            onDismissRequest = {
+                showSaveMessage = false
+            },
+            title = {
+                Text("Sucesso")
+            },
+            text = {
+                Text(message.orEmpty())
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSaveMessage = false
                     }
                 ) {
                     Text("OK")
