@@ -1,11 +1,15 @@
 
 package com.codeforge.ai
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -21,24 +25,44 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val api = remember { OpenRouterApi() }
 
-    var apiKey by remember { mutableStateOf("") }
+    var apiKey by remember {
+        mutableStateOf("")
+    }
+
     var hasSavedKey by remember {
         mutableStateOf(apiKeyManager.hasApiKey())
     }
-    var showKey by remember { mutableStateOf(false) }
+
+    var showKey by remember {
+        mutableStateOf(false)
+    }
+
     var selectedModel by remember {
         mutableStateOf(AIModels.defaultModels.first())
     }
-    var expanded by remember { mutableStateOf(false) }
-    var testing by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("") }
+
+    var expanded by remember {
+        mutableStateOf(false)
+    }
+
+    var testing by remember {
+        mutableStateOf(false)
+    }
+
+    var status by remember {
+        mutableStateOf("")
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Configurações") },
+                title = {
+                    Text("Configurações")
+                },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
+                    TextButton(
+                        onClick = onBack
+                    ) {
                         Text("Voltar")
                     }
                 }
@@ -52,43 +76,59 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(16.dp)
         ) {
 
             Text(
                 "OpenRouter API",
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme
+                    .typography.headlineSmall
             )
 
             Text(
-                if (hasSavedKey)
+                if (hasSavedKey) {
                     "Chave de API armazenada neste dispositivo."
-                else
+                } else {
                     "Nenhuma chave de API configurada."
+                }
             )
 
             OutlinedTextField(
                 value = apiKey,
-                onValueChange = { apiKey = it },
-                label = { Text("Chave de API") },
-                placeholder = { Text("sk-or-v1-...") },
+                onValueChange = {
+                    apiKey = it
+                },
+                label = {
+                    Text("Chave de API")
+                },
+                placeholder = {
+                    Text("sk-or-v1-...")
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                visualTransformation =
-                    if (showKey)
-                        VisualTransformation.None
-                    else
-                        PasswordVisualTransformation()
+                visualTransformation = if (showKey) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                }
             )
 
-            Row {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Checkbox(
                     checked = showKey,
-                    onCheckedChange = { showKey = it }
+                    onCheckedChange = {
+                        showKey = it
+                    }
                 )
+
                 Text(
                     "Mostrar chave digitada",
-                    modifier = Modifier.padding(top = 12.dp)
+                    modifier = Modifier.clickable {
+                        showKey = !showKey
+                    }
                 )
             }
 
@@ -100,7 +140,8 @@ fun SettingsScreen(
                         hasSavedKey = true
                         status = "Chave salva com sucesso."
                     } catch (e: Exception) {
-                        status = e.message ?: "Erro ao salvar chave."
+                        status = e.message
+                            ?: "Erro ao salvar chave."
                     }
                 },
                 enabled = apiKey.isNotBlank(),
@@ -113,38 +154,74 @@ fun SettingsScreen(
 
             Text(
                 "Modelo de inteligência artificial",
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme
+                    .typography.titleMedium
             )
 
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = it }
+            Box(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                OutlinedTextField(
-                    value = selectedModel.name,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Selecionar modelo") },
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(
-                            expanded = expanded
-                        )
+                OutlinedCard(
+                    onClick = {
+                        expanded = true
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(
-                            ExposedDropdownMenuAnchorType.PrimaryNotEditable
-                        )
-                )
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Selecionar modelo",
+                                style = MaterialTheme
+                                    .typography.labelMedium
+                            )
 
-                ExposedDropdownMenu(
+                            Spacer(
+                                Modifier.height(4.dp)
+                            )
+
+                            Text(
+                                selectedModel.name,
+                                style = MaterialTheme
+                                    .typography.bodyLarge
+                            )
+                        }
+
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription =
+                                "Escolher modelo"
+                        )
+                    }
+                }
+
+                DropdownMenu(
                     expanded = expanded,
-                    onDismissRequest = { expanded = false }
+                    onDismissRequest = {
+                        expanded = false
+                    }
                 ) {
                     AIModels.defaultModels.forEach { model ->
                         DropdownMenuItem(
                             text = {
-                                Text(model.name + " - " + model.provider)
+                                Column {
+                                    Text(model.name)
+
+                                    Text(
+                                        model.provider,
+                                        style = MaterialTheme
+                                            .typography.bodySmall
+                                    )
+                                }
                             },
                             onClick = {
                                 selectedModel = model
@@ -156,8 +233,9 @@ fun SettingsScreen(
             }
 
             Text(
-                "Modelo: " + selectedModel.id,
-                style = MaterialTheme.typography.bodySmall
+                "Modelo: ${selectedModel.id}",
+                style = MaterialTheme
+                    .typography.bodySmall
             )
 
             Button(
@@ -167,27 +245,39 @@ fun SettingsScreen(
 
                     scope.launch {
                         try {
-                            val key = apiKeyManager.getApiKey()
+                            val key =
+                                apiKeyManager.getApiKey()
 
                             if (key.isNullOrBlank()) {
-                                status = "Configure uma chave primeiro."
+                                status =
+                                    "Configure uma chave primeiro."
                             } else {
-                                val result = api.testConnection(
-                                    key,
-                                    selectedModel.id
-                                )
+                                val result =
+                                    api.testConnection(
+                                        key,
+                                        selectedModel.id
+                                    )
 
                                 status = result.fold(
                                     onSuccess = {
-                                        "Conexão funcionando! Resposta: " + it
+                                        "Conexão funcionando! " +
+                                            "Resposta: $it"
                                     },
                                     onFailure = {
-                                        "Erro: " + (it.message ?: "Desconhecido")
+                                        "Erro: " +
+                                            (
+                                                it.message
+                                                    ?: "Desconhecido"
+                                            )
                                     }
                                 )
                             }
                         } catch (e: Exception) {
-                            status = "Erro: " + (e.message ?: "Desconhecido")
+                            status = "Erro: " +
+                                (
+                                    e.message
+                                        ?: "Desconhecido"
+                                )
                         } finally {
                             testing = false
                         }
@@ -197,10 +287,11 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    if (testing)
+                    if (testing) {
                         "Testando..."
-                    else
+                    } else {
                         "Testar conexão"
+                    }
                 )
             }
 
@@ -218,7 +309,8 @@ fun SettingsScreen(
                         apiKey = ""
                         status = "Chave excluída."
                     } catch (e: Exception) {
-                        status = e.message ?: "Erro ao excluir chave."
+                        status = e.message
+                            ?: "Erro ao excluir chave."
                     }
                 },
                 enabled = hasSavedKey,
@@ -228,9 +320,12 @@ fun SettingsScreen(
             }
 
             Text(
-                "Aviso: os modelos podem consumir créditos do OpenRouter. " +
-                    "A chave fica armazenada criptografada no dispositivo.",
-                style = MaterialTheme.typography.bodySmall
+                "Aviso: os modelos podem consumir " +
+                    "créditos do OpenRouter. " +
+                    "A chave fica armazenada " +
+                    "criptografada no dispositivo.",
+                style = MaterialTheme
+                    .typography.bodySmall
             )
         }
     }
