@@ -11,8 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
@@ -35,23 +33,27 @@ fun ProjectsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val zipManager = remember(context) {
+    val zipExporter = remember(context) {
         ZipExportManager(context)
+    }
+
+    val zipImporter = remember(context) {
+        ZipImportManager(context)
     }
 
     var projects by remember {
         mutableStateOf(emptyList<CodeProject>())
     }
 
-    var showCreateDialog by remember {
-        mutableStateOf(false)
+    var projectName by remember {
+        mutableStateOf("")
     }
 
-    var projectToRename by remember {
-        mutableStateOf<CodeProject?>(null)
+    var dialogAction by remember {
+        mutableStateOf("")
     }
 
-    var projectToDelete by remember {
+    var selectedProject by remember {
         mutableStateOf<CodeProject?>(null)
     }
 
@@ -59,8 +61,12 @@ fun ProjectsScreen(
         mutableStateOf<CodeProject?>(null)
     }
 
-    var nameInput by remember {
-        mutableStateOf("")
+    var zipToImport by remember {
+        mutableStateOf<Uri?>(null)
+    }
+
+    var busy by remember {
+        mutableStateOf(false)
     }
 
     var errorMessage by remember {
@@ -71,25 +77,34 @@ fun ProjectsScreen(
         mutableStateOf<String?>(null)
     }
 
-    var exporting by remember {
-        mutableStateOf(false)
+    fun refreshProjects() {
+        try {
+            projects = projectManager.listProjects()
+        } catch (e: Exception) {
+            errorMessage = e.message
+                ?: "Erro ao carregar projetos."
+        }
+    }
+
+    LaunchedEffect(projectManager) {
+        refreshProjects()
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(
             "application/zip"
         )
-    ) { uri: Uri? ->
+    ) { uri ->
         val project = projectToExport
         projectToExport = null
 
         if (uri != null && project != null) {
             scope.launch {
-                exporting = true
+                busy = true
 
                 try {
                     val result = withContext(Dispatchers.IO) {
-                        zipManager.exportProject(
+                        zipExporter.exportProject(
                             project,
                             uri
                         )
@@ -100,32 +115,38 @@ fun ProjectsScreen(
                             successMessage =
                                 "Projeto exportado com sucesso!"
                         },
-                        onFailure = { error ->
-                            errorMessage = error.message
-                                ?: "Não foi possível exportar o ZIP."
+                        onFailure = {
+                            errorMessage = it.message
+                                ?: "Erro ao exportar ZIP."
                         }
                     )
                 } catch (e: Exception) {
                     errorMessage = e.message
-                        ?: "Erro ao exportar projeto."
+                        ?: "Erro ao exportar ZIP."
                 } finally {
-                    exporting = false
+                    busy = false
                 }
             }
         }
     }
 
-    fun refreshProjects() {
-        try {
-            projects = projectManager.listProjects()
-        } catch (e: Exception) {
-            errorMessage = e.message
-                ?: "Erro ao listar projetos."
-        }
-    }
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            zipToImport = uri
 
-    LaunchedEffect(projectManager) {
-        refreshProjects()
+            val fileName = uri.lastPathSegment
+                ?.substringAfterLast('/')
+                ?.substringBeforeLast('.')
+                .orEmpty()
+
+            projectName = fileName
+                .take(80)
+                .ifBlank { "Projeto importado" }
+
+            dialogAction = "import"
+        }
     }
 
     Scaffold(
@@ -135,13 +156,27 @@ fun ProjectsScreen(
                     Text("Meus projetos")
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onBack
-                    ) {
+                    IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Voltar"
                         )
+                    }
+                },
+                actions = {
+                    TextButton(
+                        onClick = {
+                            importLauncher.launch(
+                                arrayOf(
+                                    "application/zip",
+                                    "application/x-zip-compressed",
+                                    "application/octet-stream"
+                                )
+                            )
+                        },
+                        enabled = !busy
+                    ) {
+                        Text("Importar ZIP")
                     }
                 }
             )
@@ -149,10 +184,10 @@ fun ProjectsScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    nameInput = ""
-                    showCreateDialog = true
-                },
-                modifier = Modifier
+                    projectName = ""
+                    selectedProject = null
+                    dialogAction = "create"
+                }
             ) {
                 Icon(
                     Icons.Default.Add,
@@ -168,15 +203,14 @@ fun ProjectsScreen(
                 .padding(padding)
                 .padding(12.dp)
         ) {
-
-            if (exporting) {
+            if (busy) {
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(Modifier.height(8.dp))
 
-                Text("Exportando projeto...")
+                Text("Processando projeto...")
 
                 Spacer(Modifier.height(12.dp))
             }
@@ -188,7 +222,7 @@ fun ProjectsScreen(
                 ) {
                     Text(
                         "Nenhum projeto criado. " +
-                            "Toque em + para começar."
+                            "Toque em + ou Importar ZIP."
                     )
                 }
             } else {
@@ -201,7 +235,7 @@ fun ProjectsScreen(
                         key = { it.id }
                     ) { project ->
 
-                        var menuExpanded by remember {
+                        var menuExpanded by remember(project.id) {
                             mutableStateOf(false)
                         }
 
@@ -215,7 +249,6 @@ fun ProjectsScreen(
                                 verticalAlignment =
                                     Alignment.CenterVertically
                             ) {
-
                                 Icon(
                                     Icons.Default.Folder,
                                     contentDescription = null,
@@ -228,18 +261,20 @@ fun ProjectsScreen(
                                 Column(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clickable {
+                                        .clickable(
+                                            enabled = !busy
+                                        ) {
                                             onOpenProject(project)
                                         }
                                 ) {
                                     Text(
-                                        text = project.name,
+                                        project.name,
                                         style = MaterialTheme
                                             .typography.titleMedium
                                     )
 
                                     Text(
-                                        text = "Toque para abrir",
+                                        "Toque para abrir",
                                         style = MaterialTheme
                                             .typography.bodySmall
                                     )
@@ -249,7 +284,8 @@ fun ProjectsScreen(
                                     IconButton(
                                         onClick = {
                                             menuExpanded = true
-                                        }
+                                        },
+                                        enabled = !busy
                                     ) {
                                         Icon(
                                             Icons.Default.MoreVert,
@@ -265,9 +301,7 @@ fun ProjectsScreen(
                                         }
                                     ) {
                                         DropdownMenuItem(
-                                            text = {
-                                                Text("Abrir")
-                                            },
+                                            text = { Text("Abrir") },
                                             onClick = {
                                                 menuExpanded = false
                                                 onOpenProject(project)
@@ -278,13 +312,12 @@ fun ProjectsScreen(
                                             text = {
                                                 Text("Exportar ZIP")
                                             },
-                                            enabled = !exporting,
                                             onClick = {
                                                 menuExpanded = false
                                                 projectToExport = project
 
                                                 exportLauncher.launch(
-                                                    zipManager
+                                                    zipExporter
                                                         .suggestFileName(
                                                             project
                                                         )
@@ -296,16 +329,11 @@ fun ProjectsScreen(
                                             text = {
                                                 Text("Renomear")
                                             },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Default.Edit,
-                                                    contentDescription = null
-                                                )
-                                            },
                                             onClick = {
                                                 menuExpanded = false
-                                                nameInput = project.name
-                                                projectToRename = project
+                                                selectedProject = project
+                                                projectName = project.name
+                                                dialogAction = "rename"
                                             }
                                         )
 
@@ -313,15 +341,10 @@ fun ProjectsScreen(
                                             text = {
                                                 Text("Excluir")
                                             },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Default.Delete,
-                                                    contentDescription = null
-                                                )
-                                            },
                                             onClick = {
                                                 menuExpanded = false
-                                                projectToDelete = project
+                                                selectedProject = project
+                                                dialogAction = "delete"
                                             }
                                         )
                                     }
@@ -334,52 +357,153 @@ fun ProjectsScreen(
         }
     }
 
-    if (showCreateDialog) {
+    if (
+        dialogAction == "create" ||
+        dialogAction == "rename" ||
+        dialogAction == "import"
+    ) {
+        val action = dialogAction
+
         AlertDialog(
             onDismissRequest = {
-                showCreateDialog = false
+                dialogAction = ""
+                zipToImport = null
             },
             title = {
-                Text("Novo projeto")
+                Text(
+                    when (action) {
+                        "create" -> "Novo projeto"
+                        "rename" -> "Renomear projeto"
+                        else -> "Importar projeto ZIP"
+                    }
+                )
             },
             text = {
-                OutlinedTextField(
-                    value = nameInput,
-                    onValueChange = {
-                        nameInput = it
-                    },
-                    label = {
-                        Text("Nome do projeto")
-                    },
-                    singleLine = true
-                )
+                Column(
+                    verticalArrangement =
+                        Arrangement.spacedBy(8.dp)
+                ) {
+                    if (action == "import") {
+                        Text(
+                            "Escolha um nome para o projeto importado."
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = projectName,
+                        onValueChange = {
+                            projectName = it
+                        },
+                        label = {
+                            Text("Nome do projeto")
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
-                    enabled = nameInput.isNotBlank(),
+                    enabled = projectName.isNotBlank() && !busy,
                     onClick = {
-                        try {
-                            val project =
-                                projectManager.createProject(
-                                    nameInput
-                                )
+                        when (action) {
+                            "create" -> {
+                                try {
+                                    val project =
+                                        projectManager.createProject(
+                                            projectName
+                                        )
 
-                            refreshProjects()
-                            showCreateDialog = false
-                            onOpenProject(project)
-                        } catch (e: Exception) {
-                            errorMessage = e.message
-                                ?: "Erro ao criar projeto."
+                                    refreshProjects()
+                                    dialogAction = ""
+                                    onOpenProject(project)
+                                } catch (e: Exception) {
+                                    errorMessage = e.message
+                                        ?: "Erro ao criar projeto."
+                                }
+                            }
+
+                            "rename" -> {
+                                try {
+                                    val project = selectedProject
+                                        ?: error(
+                                            "Projeto não selecionado."
+                                        )
+
+                                    projectManager.renameProject(
+                                        project.id,
+                                        projectName
+                                    )
+
+                                    refreshProjects()
+                                    dialogAction = ""
+                                    selectedProject = null
+                                } catch (e: Exception) {
+                                    errorMessage = e.message
+                                        ?: "Erro ao renomear."
+                                }
+                            }
+
+                            "import" -> {
+                                val uri = zipToImport
+
+                                if (uri == null) {
+                                    errorMessage =
+                                        "Selecione um arquivo ZIP."
+                                } else {
+                                    val name = projectName
+
+                                    dialogAction = ""
+                                    zipToImport = null
+
+                                    scope.launch {
+                                        busy = true
+
+                                        try {
+                                            val result =
+                                                zipImporter.importProject(
+                                                    uri,
+                                                    name
+                                                )
+
+                                            result.fold(
+                                                onSuccess = {
+                                                    refreshProjects()
+                                                    successMessage =
+                                                        "Projeto importado!"
+                                                },
+                                                onFailure = {
+                                                    errorMessage =
+                                                        it.message
+                                                            ?: "Erro na importação."
+                                                }
+                                            )
+                                        } catch (e: Exception) {
+                                            errorMessage = e.message
+                                                ?: "Erro na importação."
+                                        } finally {
+                                            busy = false
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 ) {
-                    Text("Criar")
+                    Text(
+                        if (action == "import") {
+                            "Importar"
+                        } else {
+                            "Confirmar"
+                        }
+                    )
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showCreateDialog = false
+                        dialogAction = ""
+                        zipToImport = null
                     }
                 ) {
                     Text("Cancelar")
@@ -388,70 +512,21 @@ fun ProjectsScreen(
         )
     }
 
-    projectToRename?.let { project ->
+    if (dialogAction == "delete") {
+        val project = selectedProject
+
         AlertDialog(
             onDismissRequest = {
-                projectToRename = null
-            },
-            title = {
-                Text("Renomear projeto")
-            },
-            text = {
-                OutlinedTextField(
-                    value = nameInput,
-                    onValueChange = {
-                        nameInput = it
-                    },
-                    label = {
-                        Text("Novo nome")
-                    },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = nameInput.isNotBlank(),
-                    onClick = {
-                        try {
-                            projectManager.renameProject(
-                                project.id,
-                                nameInput
-                            )
-
-                            refreshProjects()
-                            projectToRename = null
-                        } catch (e: Exception) {
-                            errorMessage = e.message
-                                ?: "Erro ao renomear projeto."
-                        }
-                    }
-                ) {
-                    Text("Salvar")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        projectToRename = null
-                    }
-                ) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
-
-    projectToDelete?.let { project ->
-        AlertDialog(
-            onDismissRequest = {
-                projectToDelete = null
+                dialogAction = ""
+                selectedProject = null
             },
             title = {
                 Text("Excluir projeto?")
             },
             text = {
                 Text(
-                    "Todos os arquivos de '${project.name}' " +
+                    "Todos os arquivos de " +
+                        "'${project?.name.orEmpty()}' " +
                         "serão excluídos permanentemente."
                 )
             },
@@ -459,12 +534,18 @@ fun ProjectsScreen(
                 TextButton(
                     onClick = {
                         try {
+                            val target = project
+                                ?: error(
+                                    "Projeto não selecionado."
+                                )
+
                             projectManager.deleteProject(
-                                project.id
+                                target.id
                             )
 
                             refreshProjects()
-                            projectToDelete = null
+                            dialogAction = ""
+                            selectedProject = null
                         } catch (e: Exception) {
                             errorMessage = e.message
                                 ?: "Erro ao excluir projeto."
@@ -472,63 +553,4 @@ fun ProjectsScreen(
                     }
                 ) {
                     Text("Excluir")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        projectToDelete = null
-                    }
-                ) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
-
-    errorMessage?.let { error ->
-        AlertDialog(
-            onDismissRequest = {
-                errorMessage = null
-            },
-            title = {
-                Text("Erro")
-            },
-            text = {
-                Text(error)
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        errorMessage = null
-                    }
-                ) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
-    successMessage?.let { message ->
-        AlertDialog(
-            onDismissRequest = {
-                successMessage = null
-            },
-            title = {
-                Text("Sucesso")
-            },
-            text = {
-                Text(message)
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        successMessage = null
-                    }
-                ) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-}
+             
