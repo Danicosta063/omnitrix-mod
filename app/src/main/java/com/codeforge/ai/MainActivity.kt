@@ -317,6 +317,7 @@ private fun CodeForgeApp(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CodeForgeChatScreen(
     apiKeyManager: ApiKeyManager,
