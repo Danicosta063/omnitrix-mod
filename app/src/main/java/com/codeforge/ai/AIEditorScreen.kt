@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -162,7 +163,7 @@ fun AIEditorScreen(
             )
         }
     ) { padding ->
-
+        
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -183,32 +184,51 @@ fun AIEditorScreen(
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            ExposedDropdownMenuBox(
-                expanded = modelMenuExpanded,
-                onExpandedChange = {
-                    modelMenuExpanded = !modelMenuExpanded
-                }
+            Box(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                OutlinedTextField(
-                    value = selectedModel.name,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = {
-                        Text("Modelo de IA")
+                OutlinedCard(
+                    onClick = {
+                        if (!loading) {
+                            modelMenuExpanded = true
+                        }
                     },
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(
-                            expanded = modelMenuExpanded
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(
-                            ExposedDropdownMenuAnchorType.PrimaryNotEditable
-                        )
-                )
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Modelo de IA",
+                                style = MaterialTheme
+                                    .typography.labelMedium
+                            )
 
-                ExposedDropdownMenu(
+                            Spacer(
+                                modifier = Modifier.height(4.dp)
+                            )
+
+                            Text(
+                                selectedModel.name,
+                                style = MaterialTheme
+                                    .typography.bodyLarge
+                            )
+                        }
+
+                        Text("▼")
+                    }
+                }
+
+                DropdownMenu(
                     expanded = modelMenuExpanded,
                     onDismissRequest = {
                         modelMenuExpanded = false
@@ -219,6 +239,7 @@ fun AIEditorScreen(
                             text = {
                                 Column {
                                     Text(model.name)
+
                                     Text(
                                         model.provider,
                                         style = MaterialTheme
@@ -347,7 +368,7 @@ fun AIEditorScreen(
                             )
                         }
                     }
-
+                    
                     Button(
                         onClick = {
                             showConfirmDialog = true
@@ -416,20 +437,25 @@ fun AIEditorScreen(
                         val change = preparedChange
 
                         if (change != null) {
-                            val result =
-                                aiManager.applyFileChange(change)
+                            try {
+                                val result =
+                                    aiManager.applyFileChange(change)
 
-                            result.fold(
-                                onSuccess = {
-                                    preparedChange = null
-                                    successMessage =
-                                        "Arquivo atualizado com sucesso!"
-                                },
-                                onFailure = {
-                                    errorMessage = it.message
-                                        ?: "Erro ao salvar alteração."
-                                }
-                            )
+                                result.fold(
+                                    onSuccess = {
+                                        preparedChange = null
+                                        successMessage =
+                                            "Arquivo atualizado com sucesso!"
+                                    },
+                                    onFailure = {
+                                        errorMessage = it.message
+                                            ?: "Erro ao salvar alteração."
+                                    }
+                                )
+                            } catch (e: Exception) {
+                                errorMessage = e.message
+                                    ?: "Erro ao aplicar alteração."
+                            }
                         }
                     }
                 ) {
