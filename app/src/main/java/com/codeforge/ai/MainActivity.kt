@@ -14,7 +14,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val AppBackground = Color(0xFF101218)
 private val AppSurface = Color(0xFF1C2029)
@@ -39,6 +43,7 @@ private sealed interface AppPage {
     data object Chat : AppPage
     data object Settings : AppPage
     data object Projects : AppPage
+    data object History : AppPage
 
     data class Explorer(
         val project: CodeProject
@@ -61,27 +66,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val apiKeyManager = ApiKeyManager(
-            applicationContext
-        )
-
-        val projectManager = ProjectManager(
-            applicationContext
-        )
+        val apiKeyManager = ApiKeyManager(applicationContext)
+        val projectManager = ProjectManager(applicationContext)
+        val historyManager = ChatHistoryManager(applicationContext)
 
         setContent {
-            val colors = darkColorScheme(
-                primary = AppAccent,
-                background = AppBackground,
-                surface = AppSurface
-            )
-
             MaterialTheme(
-                colorScheme = colors
+                colorScheme = darkColorScheme(
+                    primary = AppAccent,
+                    background = AppBackground,
+                    surface = AppSurface
+                )
             ) {
                 CodeForgeApp(
                     apiKeyManager = apiKeyManager,
-                    projectManager = projectManager
+                    projectManager = projectManager,
+                    historyManager = historyManager
                 )
             }
         }
@@ -91,7 +91,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun CodeForgeApp(
     apiKeyManager: ApiKeyManager,
-    projectManager: ProjectManager
+    projectManager: ProjectManager,
+    historyManager: ChatHistoryManager
 ) {
     var currentPage by remember {
         mutableStateOf<AppPage>(AppPage.Chat)
@@ -105,12 +106,60 @@ private fun CodeForgeApp(
         mutableLongStateOf(0L)
     }
 
+    var currentChatId by remember {
+        mutableStateOf<String?>(null)
+    }
+
     var selectedModel by remember {
         mutableStateOf(AIModels.defaultModels.first())
     }
 
     var chatInput by remember {
         mutableStateOf("")
+    }
+
+    var chatError by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var chatBusy by remember {
+        mutableStateOf(false)
+    }
+
+    fun loadChat(chat: SavedChat) {
+        currentChatId = chat.id
+        messages.clear()
+
+        chat.messages.forEach { saved ->
+            if (
+                saved.role == "user" ||
+                saved.role == "assistant"
+            ) {
+                nextMessageId += 1L
+
+                messages.add(
+                    ChatMessage(
+                        id = nextMessageId,
+                        text = saved.content,
+                        isUser = saved.role == "user"
+                    )
+                )
+            }
+        }
+
+        selectedModel = AIModels.defaultModels
+            .firstOrNull { it.id == chat.modelId }
+            ?: AIModels.createCustomModel(chat.modelId)
+
+        chatInput = ""
+        currentPage = AppPage.Chat
+    }
+
+    fun newChat() {
+        currentChatId = null
+        messages.clear()
+        chatInput = ""
+        currentPage = AppPage.Chat
     }
 
     fun returnToEditor(
@@ -129,10 +178,15 @@ private fun CodeForgeApp(
         AppPage.Chat -> {
             CodeForgeChatScreen(
                 apiKeyManager = apiKeyManager,
+                historyManager = historyManager,
                 messages = messages,
                 nextMessageId = {
                     nextMessageId += 1L
                     nextMessageId
+                },
+                currentChatId = currentChatId,
+                onChatIdChange = {
+                    currentChatId = it
                 },
                 selectedModel = selectedModel,
                 onModelChange = {
@@ -142,11 +196,24 @@ private fun CodeForgeApp(
                 onInputChange = {
                     chatInput = it
                 },
+                busy = chatBusy,
+                onBusyChange = {
+                    chatBusy = it
+                },
                 onOpenSettings = {
                     currentPage = AppPage.Settings
                 },
                 onOpenProjects = {
                     currentPage = AppPage.Projects
+                },
+                onOpenHistory = {
+                    currentPage = AppPage.History
+                },
+                onNewChat = {
+                    newChat()
+                },
+                onError = {
+                    chatError = it
                 }
             )
         }
@@ -176,6 +243,23 @@ private fun CodeForgeApp(
                 },
                 onOpenProject = { project ->
                     currentPage = AppPage.Explorer(project)
+                }
+            )
+        }
+
+        AppPage.History -> {
+            BackHandler {
+                currentPage = AppPage.Chat
+            }
+
+            ChatHistoryScreen(
+                historyManager = historyManager,
+                currentModelId = selectedModel.id,
+                onBack = {
+                    currentPage = AppPage.Chat
+                },
+                onOpenChat = { chat ->
+                    loadChat(chat)
                 }
             )
         }
@@ -240,20 +324,51 @@ private fun CodeForgeApp(
             )
         }
     }
+
+    chatError?.let { error ->
+        AlertDialog(
+            onDismissRequest = {
+                chatError = null
+            },
+            title = {
+                Text("Erro")
+            },
+            text = {
+                Text(error)
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        chatError = null
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CodeForgeChatScreen(
     apiKeyManager: ApiKeyManager,
+    historyManager: ChatHistoryManager,
     messages: androidx.compose.runtime.snapshots.SnapshotStateList<ChatMessage>,
     nextMessageId: () -> Long,
+    currentChatId: String?,
+    onChatIdChange: (String?) -> Unit,
     selectedModel: AIModel,
     onModelChange: (AIModel) -> Unit,
     input: String,
     onInputChange: (String) -> Unit,
+    busy: Boolean,
+    onBusyChange: (Boolean) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenProjects: () -> Unit
+    onOpenProjects: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onNewChat: () -> Unit,
+    onError: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -262,30 +377,60 @@ private fun CodeForgeChatScreen(
         OpenRouterApi()
     }
 
-    var loading by remember {
-        mutableStateOf(false)
-    }
-
     var modelMenuExpanded by remember {
         mutableStateOf(false)
-    }
-
-    var errorMessage by remember {
-        mutableStateOf<String?>(null)
     }
 
     fun sendMessage() {
         val userText = input.trim()
 
-        if (userText.isBlank() || loading) {
+        if (userText.isBlank() || busy) {
+            return
+        }
+
+        if (userText.length > 100_000) {
+            onError("A mensagem excede o limite de 100 mil caracteres.")
             return
         }
 
         val apiKey = apiKeyManager.getApiKey()
 
         if (apiKey.isNullOrBlank()) {
-            errorMessage =
+            onError(
                 "Configure sua chave OpenRouter nas configurações."
+            )
+            return
+        }
+
+        val chatId = try {
+            val existingId = currentChatId
+
+            if (existingId != null) {
+                historyManager.addMessage(
+                    existingId,
+                    "user",
+                    userText
+                )
+
+                existingId
+            } else {
+                val chat = historyManager.createChat(
+                    modelId = selectedModel.id
+                )
+
+                historyManager.addMessage(
+                    chat.id,
+                    "user",
+                    userText
+                )
+
+                onChatIdChange(chat.id)
+                chat.id
+            }
+        } catch (e: Exception) {
+            onError(
+                e.message ?: "Erro ao salvar mensagem."
+            )
             return
         }
 
@@ -298,63 +443,83 @@ private fun CodeForgeChatScreen(
         )
 
         onInputChange("")
-        loading = true
+        onBusyChange(true)
+
+        val requestMessages = buildList {
+            add(
+                ApiMessage(
+                    role = "system",
+                    content = AIModels.systemPrompt
+                )
+            )
+
+            messages.forEach { message ->
+                add(
+                    ApiMessage(
+                        role = if (message.isUser) {
+                            "user"
+                        } else {
+                            "assistant"
+                        },
+                        content = message.text
+                    )
+                )
+            }
+        }
+
+        val modelId = selectedModel.id
 
         scope.launch {
             try {
-                val requestMessages = buildList {
-                    add(
-                        ApiMessage(
-                            role = "system",
-                            content = AIModels.systemPrompt
-                        )
+                val result = withContext(Dispatchers.IO) {
+                    api.sendMessage(
+                        apiKey = apiKey,
+                        model = modelId,
+                        messages = requestMessages
                     )
-
-                    messages.forEach { message ->
-                        add(
-                            ApiMessage(
-                                role = if (message.isUser) {
-                                    "user"
-                                } else {
-                                    "assistant"
-                                },
-                                content = message.text
-                            )
-                        )
-                    }
                 }
-
-                val result = api.sendMessage(
-                    apiKey = apiKey,
-                    model = selectedModel.id,
-                    messages = requestMessages
-                )
 
                 result.fold(
                     onSuccess = { response ->
-                        messages.add(
-                            ChatMessage(
-                                id = nextMessageId(),
-                                text = response,
-                                isUser = false
+                        try {
+                            historyManager.addMessage(
+                                chatId,
+                                "assistant",
+                                response
                             )
-                        )
+
+                            messages.add(
+                                ChatMessage(
+                                    id = nextMessageId(),
+                                    text = response,
+                                    isUser = false
+                                )
+                            )
+                        } catch (e: Exception) {
+                            onError(
+                                e.message
+                                    ?: "Erro ao salvar resposta."
+                            )
+                        }
                     },
                     onFailure = { error ->
-                        errorMessage = error.message
-                            ?: "Erro ao consultar a IA."
+                        onError(
+                            error.message
+                                ?: "Erro ao consultar a IA."
+                        )
                     }
                 )
             } catch (e: Exception) {
-                errorMessage = e.message
-                    ?: "Erro ao enviar mensagem."
+                onError(
+                    e.message ?: "Erro ao enviar mensagem."
+                )
             } finally {
-                loading = false
+                onBusyChange(false)
             }
         }
     }
 
-    LaunchedEffect(messages.size, loading) {
+    LaunchedEffect(messages.size, busy) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(
                 messages.lastIndex
@@ -369,6 +534,26 @@ private fun CodeForgeChatScreen(
                     Text("CodeForge AI")
                 },
                 actions = {
+                    IconButton(
+                        onClick = onNewChat,
+                        enabled = !busy
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Nova conversa"
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onOpenHistory,
+                        enabled = !busy
+                    ) {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = "Histórico"
+                        )
+                    }
+
                     IconButton(
                         onClick = onOpenProjects
                     ) {
@@ -426,7 +611,7 @@ private fun CodeForgeChatScreen(
                             sendMessage()
                         },
                         enabled = input.isNotBlank() &&
-                            !loading
+                            !busy
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.Send,
@@ -444,11 +629,12 @@ private fun CodeForgeChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-
             ExposedDropdownMenuBox(
                 expanded = modelMenuExpanded,
                 onExpandedChange = {
-                    modelMenuExpanded = !modelMenuExpanded
+                    if (!busy) {
+                        modelMenuExpanded = !modelMenuExpanded
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -492,108 +678,7 @@ private fun CodeForgeChatScreen(
                                 }
                             },
                             onClick = {
-                                onModelChange(model)
-                                modelMenuExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            if (messages.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Seu assistente de programação está pronto.",
-                        style = MaterialTheme
-                            .typography.bodyLarge
-                    )
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentPadding = PaddingValues(12.dp),
-                    verticalArrangement =
-                        Arrangement.spacedBy(10.dp)
-                ) {
-                    items(
-                        items = messages,
-                        key = { it.id }
-                    ) { message ->
-                        ChatMessageBubble(message)
-                    }
-
-                    if (loading) {
-                        item {
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    errorMessage?.let { message ->
-        AlertDialog(
-            onDismissRequest = {
-                errorMessage = null
-            },
-            title = {
-                Text("Erro")
-            },
-            text = {
-                Text(message)
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        errorMessage = null
-                    }
-                ) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun ChatMessageBubble(
-    message: ChatMessage
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isUser) {
-            Arrangement.End
-        } else {
-            Arrangement.Start
-        }
-    ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = if (message.isUser) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-            modifier = Modifier
-                .widthIn(max = 340.dp)
-        ) {
-            Text(
-                text = message.text,
-                modifier = Modifier.padding(14.dp),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
+                                try {
+                                    currentChatId?.let { chatId ->
+                                        historyManager.changeModel(
+                 
