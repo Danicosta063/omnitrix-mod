@@ -5,45 +5,23 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 private val Background = Color(0xFF101218)
 private val Surface = Color(0xFF1C2029)
@@ -58,6 +36,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val keyManager = ApiKeyManager(this)
+
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -66,7 +46,23 @@ class MainActivity : ComponentActivity() {
                     surface = Surface
                 )
             ) {
-                CodeForgeScreen()
+                var showSettings by remember {
+                    mutableStateOf(false)
+                }
+
+                if (showSettings) {
+                    SettingsScreen(
+                        apiKeyManager = keyManager,
+                        onBack = { showSettings = false }
+                    )
+                } else {
+                    CodeForgeScreen(
+                        apiKeyManager = keyManager,
+                        onOpenSettings = {
+                            showSettings = true
+                        }
+                    )
+                }
             }
         }
     }
@@ -74,43 +70,218 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CodeForgeScreen() {
+fun CodeForgeScreen(
+    apiKeyManager: ApiKeyManager,
+    onOpenSettings: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val api = remember { OpenRouterApi() }
+    val listState = rememberLazyListState()
+
     var input by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
+
+    var selectedModel by remember {
+        mutableStateOf(AIModels.defaultModels.first())
+    }
 
     val messages = remember {
         mutableStateListOf(
             ChatMessage(
-                "Olá! Sou o CodeForge AI. Escolha uma IA e vamos programar juntos!",
+                "Olá! Sou o CodeForge AI. " +
+                    "Configure sua chave do OpenRouter " +
+                    "e escolha um modelo para começar.",
                 false
             )
         )
     }
 
+    fun sendMessage() {
+        val userText = input.trim()
+
+        if (userText.isBlank() || loading) return
+
+        val apiKey = try {
+            apiKeyManager.getApiKey()
+        } catch (_: Exception) {
+            null
+        }
+
+        if (apiKey.isNullOrBlank()) {
+            messages.add(
+                ChatMessage(
+                    "Configure sua chave de API " +
+                        "nas configurações antes de enviar.",
+                    false
+                )
+            )
+            return
+        }
+
+        val history = mutableListOf(
+            ApiMessage(
+                role = "system",
+                content = AIModels.systemPrompt
+            )
+        )
+
+        messages.forEach { message ->
+            if (message.isUser) {
+                history.add(
+                    ApiMessage("user", message.text)
+                )
+            } else if (!message.text.startsWith("Olá!") &&
+                !message.text.startsWith("Configure sua chave") &&
+                !message.text.startsWith("Erro:")) {
+                history.add(
+                    ApiMessage("assistant", message.text)
+                )
+            }
+        }
+
+        history.add(ApiMessage("user", userText))
+
+        messages.add(ChatMessage(userText, true))
+        input = ""
+        loading = true
+
+        scope.launch {
+            try {
+                val result = api.sendMessage(
+                    apiKey = apiKey,
+                    model = selectedModel.id,
+                    messages = history
+                )
+
+                result.fold(
+                    onSuccess = {
+                        messages.add(ChatMessage(it, false))
+                    },
+                    onFailure = {
+                        messages.add(
+                            ChatMessage(
+                                "Erro: " +
+                                    (it.message ?: "Falha desconhecida"),
+                                false
+                            )
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                messages.add(
+                    ChatMessage(
+                        "Erro: " +
+                            (e.message ?: "Falha desconhecida"),
+                        false
+                    )
+                )
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    LaunchedEffect(messages.size, loading) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(
+                messages.lastIndex
+            )
+        }
+    }
+
     Scaffold(
         containerColor = Background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = null,
-                            tint = Accent
-                        )
-
-                        Text(
-                            text = " CodeForge AI",
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Surface,
-                    titleContentColor = Color.White
+            Column(
+                modifier = Modifier.background(Surface)
+            ) {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Code,
+                                contentDescription = null,
+                                tint = Accent
+                            )
+                            Text(
+                                " CodeForge AI",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = onOpenSettings
+                        ) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Configurações"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Surface,
+                        titleContentColor = Color.White,
+                        actionIconContentColor = Color.White
+                    )
                 )
-            )
+
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = {
+                        if (!loading) expanded = it
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = selectedModel.name,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Modelo de IA") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(
+                                expanded = expanded
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(
+                                ExposedDropdownMenuAnchorType
+                                    .PrimaryNotEditable
+                            )
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = {
+                            expanded = false
+                        }
+                    ) {
+                        AIModels.defaultModels.forEach { model ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        model.name +
+                                            " — " +
+                                            model.provider
+                                    )
+                                },
+                                onClick = {
+                                    selectedModel = model
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+            }
         },
         bottomBar = {
             Row(
@@ -118,48 +289,59 @@ fun CodeForgeScreen() {
                     .fillMaxWidth()
                     .background(Surface)
                     .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Bottom
             ) {
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
                     modifier = Modifier.weight(1f),
                     placeholder = {
-                        Text("Digite sua mensagem...")
+                        Text("Peça um código...")
                     },
-                    maxLines = 5,
+                    maxLines = 6,
+                    enabled = !loading,
                     shape = RoundedCornerShape(16.dp)
                 )
 
                 IconButton(
-                    onClick = {
-                        val message = input.trim()
-                        if (message.isNotEmpty()) {
-                            messages.add(
-                                ChatMessage(message, true)
-                            )
-                            input = ""
-                        }
-                    }
+                    onClick = { sendMessage() },
+                    enabled = input.isNotBlank() && !loading
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Enviar",
                         tint = Accent
                     )
                 }
             }
         }
-    ) { paddingValues ->
+    ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(padding)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(messages) { message ->
+            itemsIndexed(messages) { _, message ->
                 MessageBubble(message)
+            }
+
+            if (loading) {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement =
+                            Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Text("A IA está respondendo...")
+                    }
+                }
             }
         }
     }
@@ -190,27 +372,16 @@ fun MessageBubble(message: ChatMessage) {
                 modifier = Modifier.padding(14.dp)
             ) {
                 if (!message.isUser) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SmartToy,
-                            contentDescription = null,
-                            tint = Accent
-                        )
-
-                        Text(
-                            text = " CodeForge AI",
-                            color = Accent,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "CodeForge AI",
+                        color = Accent,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
                 }
 
                 Text(
-                    text = message.text,
+                    message.text,
                     color = Color.White
                 )
             }
