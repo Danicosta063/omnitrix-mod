@@ -4,15 +4,18 @@ package com.codeforge.ai
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,11 +35,28 @@ data class ChatMessage(
     val isUser: Boolean
 )
 
+private sealed interface AppPage {
+    data object Chat : AppPage
+    data object Settings : AppPage
+    data object Projects : AppPage
+
+    data class Explorer(
+        val project: CodeProject
+    ) : AppPage
+
+    data class Editor(
+        val project: CodeProject,
+        val filePath: String
+    ) : AppPage
+}
+
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val keyManager = ApiKeyManager(this)
+        val apiKeyManager = ApiKeyManager(this)
+        val projectManager = ProjectManager(this)
 
         setContent {
             MaterialTheme(
@@ -46,24 +66,122 @@ class MainActivity : ComponentActivity() {
                     surface = Surface
                 )
             ) {
-                var showSettings by remember {
-                    mutableStateOf(false)
-                }
-
-                if (showSettings) {
-                    SettingsScreen(
-                        apiKeyManager = keyManager,
-                        onBack = { showSettings = false }
-                    )
-                } else {
-                    CodeForgeScreen(
-                        apiKeyManager = keyManager,
-                        onOpenSettings = {
-                            showSettings = true
-                        }
-                    )
-                }
+                CodeForgeApp(
+                    apiKeyManager = apiKeyManager,
+                    projectManager = projectManager
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun CodeForgeApp(
+    apiKeyManager: ApiKeyManager,
+    projectManager: ProjectManager
+) {
+    var currentPage by remember {
+        mutableStateOf<AppPage>(AppPage.Chat)
+    }
+
+    val messages = remember {
+        mutableStateListOf(
+            ChatMessage(
+                text = "Olá! Sou o CodeForge AI. " +
+                    "Configure sua chave do OpenRouter " +
+                    "para começar a programar comigo.",
+                isUser = false
+            )
+        )
+    }
+
+    var selectedModel by remember {
+        mutableStateOf(AIModels.defaultModels.first())
+    }
+
+    var chatInput by remember {
+        mutableStateOf("")
+    }
+
+    when (val page = currentPage) {
+
+        AppPage.Chat -> {
+            CodeForgeScreen(
+                apiKeyManager = apiKeyManager,
+                messages = messages,
+                selectedModel = selectedModel,
+                onModelChange = { selectedModel = it },
+                input = chatInput,
+                onInputChange = { chatInput = it },
+                onOpenSettings = {
+                    currentPage = AppPage.Settings
+                },
+                onOpenProjects = {
+                    currentPage = AppPage.Projects
+                }
+            )
+        }
+
+        AppPage.Settings -> {
+            BackHandler {
+                currentPage = AppPage.Chat
+            }
+
+            SettingsScreen(
+                apiKeyManager = apiKeyManager,
+                onBack = {
+                    currentPage = AppPage.Chat
+                }
+            )
+        }
+
+        AppPage.Projects -> {
+            BackHandler {
+                currentPage = AppPage.Chat
+            }
+
+            ProjectsScreen(
+                projectManager = projectManager,
+                onBack = {
+                    currentPage = AppPage.Chat
+                },
+                onOpenProject = { project ->
+                    currentPage = AppPage.Explorer(project)
+                }
+            )
+        }
+
+        is AppPage.Explorer -> {
+            BackHandler {
+                currentPage = AppPage.Projects
+            }
+
+            FileExplorerScreen(
+                project = page.project,
+                projectManager = projectManager,
+                onBack = {
+                    currentPage = AppPage.Projects
+                },
+                onOpenFile = { filePath ->
+                    currentPage = AppPage.Editor(
+                        project = page.project,
+                        filePath = filePath
+                    )
+                }
+            )
+        }
+
+        is AppPage.Editor -> {
+            CodeEditorScreen(
+                project = page.project,
+                filePath = page.filePath,
+                projectManager = projectManager,
+                onBack = {
+                    currentPage = AppPage.Explorer(
+                        page.project
+                    )
+                }
+            )
         }
     }
 }
@@ -72,29 +190,24 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CodeForgeScreen(
     apiKeyManager: ApiKeyManager,
-    onOpenSettings: () -> Unit
+    messages: MutableList<ChatMessage>,
+    selectedModel: AIModel,
+    onModelChange: (AIModel) -> Unit,
+    input: String,
+    onInputChange: (String) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenProjects: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val api = remember { OpenRouterApi() }
     val listState = rememberLazyListState()
 
-    var input by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(false) }
-
-    var selectedModel by remember {
-        mutableStateOf(AIModels.defaultModels.first())
+    var loading by remember {
+        mutableStateOf(false)
     }
 
-    val messages = remember {
-        mutableStateListOf(
-            ChatMessage(
-                "Olá! Sou o CodeForge AI. " +
-                    "Configure sua chave do OpenRouter " +
-                    "e escolha um modelo para começar.",
-                false
-            )
-        )
+    var expanded by remember {
+        mutableStateOf(false)
     }
 
     fun sendMessage() {
@@ -111,8 +224,7 @@ fun CodeForgeScreen(
         if (apiKey.isNullOrBlank()) {
             messages.add(
                 ChatMessage(
-                    "Configure sua chave de API " +
-                        "nas configurações antes de enviar.",
+                    "Configure sua chave de API nas configurações.",
                     false
                 )
             )
@@ -131,19 +243,26 @@ fun CodeForgeScreen(
                 history.add(
                     ApiMessage("user", message.text)
                 )
-            } else if (!message.text.startsWith("Olá!") &&
+            } else if (
+                !message.text.startsWith("Olá!") &&
                 !message.text.startsWith("Configure sua chave") &&
-                !message.text.startsWith("Erro:")) {
+                !message.text.startsWith("Erro:")
+            ) {
                 history.add(
                     ApiMessage("assistant", message.text)
                 )
             }
         }
 
-        history.add(ApiMessage("user", userText))
+        history.add(
+            ApiMessage("user", userText)
+        )
 
-        messages.add(ChatMessage(userText, true))
-        input = ""
+        messages.add(
+            ChatMessage(userText, true)
+        )
+
+        onInputChange("")
         loading = true
 
         scope.launch {
@@ -155,14 +274,16 @@ fun CodeForgeScreen(
                 )
 
                 result.fold(
-                    onSuccess = {
-                        messages.add(ChatMessage(it, false))
+                    onSuccess = { response ->
+                        messages.add(
+                            ChatMessage(response, false)
+                        )
                     },
-                    onFailure = {
+                    onFailure = { error ->
                         messages.add(
                             ChatMessage(
                                 "Erro: " +
-                                    (it.message ?: "Falha desconhecida"),
+                                    (error.message ?: "Falha desconhecida"),
                                 false
                             )
                         )
@@ -206,6 +327,7 @@ fun CodeForgeScreen(
                                 contentDescription = null,
                                 tint = Accent
                             )
+
                             Text(
                                 " CodeForge AI",
                                 fontWeight = FontWeight.Bold
@@ -213,6 +335,15 @@ fun CodeForgeScreen(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = onOpenProjects
+                        ) {
+                            Icon(
+                                Icons.Default.Folder,
+                                contentDescription = "Meus projetos"
+                            )
+                        }
+
                         IconButton(
                             onClick = onOpenSettings
                         ) {
@@ -272,7 +403,7 @@ fun CodeForgeScreen(
                                     )
                                 },
                                 onClick = {
-                                    selectedModel = model
+                                    onModelChange(model)
                                     expanded = false
                                 }
                             )
@@ -293,7 +424,7 @@ fun CodeForgeScreen(
             ) {
                 OutlinedTextField(
                     value = input,
-                    onValueChange = { input = it },
+                    onValueChange = onInputChange,
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text("Peça um código...")
@@ -316,6 +447,7 @@ fun CodeForgeScreen(
             }
         }
     ) { padding ->
+
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -324,7 +456,7 @@ fun CodeForgeScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            itemsIndexed(messages) { _, message ->
+            items(messages) { message ->
                 MessageBubble(message)
             }
 
@@ -339,6 +471,7 @@ fun CodeForgeScreen(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp
                         )
+
                         Text("A IA está respondendo...")
                     }
                 }
@@ -377,6 +510,7 @@ fun MessageBubble(message: ChatMessage) {
                         color = Accent,
                         fontWeight = FontWeight.Bold
                     )
+
                     Spacer(Modifier.height(8.dp))
                 }
 
