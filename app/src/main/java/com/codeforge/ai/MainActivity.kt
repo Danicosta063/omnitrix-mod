@@ -48,7 +48,8 @@ private sealed interface AppPage {
 
     data class Editor(
         val project: CodeProject,
-        val filePath: String
+        val filePath: String,
+        val revision: Int = 0
     ) : AppPage
 
     data class AIEditor(
@@ -74,9 +75,9 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 CodeForgeApp(
-                    apiKeyManager,
-                    projectManager,
-                    historyManager
+                    apiKeyManager = apiKeyManager,
+                    projectManager = projectManager,
+                    historyManager = historyManager
                 )
             }
         }
@@ -109,14 +110,8 @@ private fun CodeForgeApp(
         mutableLongStateOf(0L)
     }
 
-    var input by remember {
-        mutableStateOf("")
-    }
-
-    var busy by remember {
-        mutableStateOf(false)
-    }
-
+    var input by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
     var errorMessage by remember {
         mutableStateOf<String?>(null)
     }
@@ -130,8 +125,7 @@ private fun CodeForgeApp(
                 message.role == "user" ||
                 message.role == "assistant"
             ) {
-                nextId++
-
+                nextId += 1L
                 messages.add(
                     ChatMessage(
                         id = nextId,
@@ -162,6 +156,17 @@ private fun CodeForgeApp(
         page = AppPage.Chat
     }
 
+    fun returnToEditor(
+        project: CodeProject,
+        filePath: String
+    ) {
+        page = AppPage.Editor(
+            project = project,
+            filePath = filePath,
+            revision = System.nanoTime().toInt()
+        )
+    }
+
     when (val current = page) {
         AppPage.Chat -> {
             CodeForgeChatScreen(
@@ -169,7 +174,7 @@ private fun CodeForgeApp(
                 historyManager = historyManager,
                 messages = messages,
                 nextId = {
-                    nextId++
+                    nextId += 1L
                     nextId
                 },
                 chatId = currentChatId,
@@ -181,13 +186,9 @@ private fun CodeForgeApp(
                     selectedModel = it
                 },
                 input = input,
-                onInputChange = {
-                    input = it
-                },
+                onInputChange = { input = it },
                 busy = busy,
-                onBusyChange = {
-                    busy = it
-                },
+                onBusyChange = { busy = it },
                 onNewChat = { newChat() },
                 onHistory = {
                     page = AppPage.History
@@ -208,12 +209,9 @@ private fun CodeForgeApp(
             BackHandler {
                 page = AppPage.Chat
             }
-
             SettingsScreen(
                 apiKeyManager = apiKeyManager,
-                onBack = {
-                    page = AppPage.Chat
-                }
+                onBack = { page = AppPage.Chat }
             )
         }
 
@@ -221,12 +219,9 @@ private fun CodeForgeApp(
             BackHandler {
                 page = AppPage.Chat
             }
-
             ProjectsScreen(
                 projectManager = projectManager,
-                onBack = {
-                    page = AppPage.Chat
-                },
+                onBack = { page = AppPage.Chat },
                 onOpenProject = {
                     page = AppPage.Explorer(it)
                 }
@@ -237,16 +232,11 @@ private fun CodeForgeApp(
             BackHandler {
                 page = AppPage.Chat
             }
-
             ChatHistoryScreen(
                 historyManager = historyManager,
                 currentModelId = selectedModel.id,
-                onBack = {
-                    page = AppPage.Chat
-                },
-                onOpenChat = {
-                    openChat(it)
-                }
+                onBack = { page = AppPage.Chat },
+                onOpenChat = { openChat(it) }
             )
         }
 
@@ -254,7 +244,6 @@ private fun CodeForgeApp(
             BackHandler {
                 page = AppPage.Projects
             }
-
             FileExplorerScreen(
                 project = current.project,
                 projectManager = projectManager,
@@ -262,31 +251,34 @@ private fun CodeForgeApp(
                     page = AppPage.Projects
                 },
                 onOpenFile = {
-                    page = AppPage.Editor(
-                        current.project,
-                        it
-                    )
+                    returnToEditor(current.project, it)
                 }
             )
         }
 
         is AppPage.Editor -> {
-            CodeEditorScreen(
-                project = current.project,
-                filePath = current.filePath,
-                projectManager = projectManager,
-                onBack = {
-                    page = AppPage.Explorer(
-                        current.project
-                    )
-                },
-                onOpenAI = {
-                    page = AppPage.AIEditor(
-                        current.project,
-                        current.filePath
-                    )
-                }
-            )
+            key(
+                current.project.id,
+                current.filePath,
+                current.revision
+            ) {
+                CodeEditorScreen(
+                    project = current.project,
+                    filePath = current.filePath,
+                    projectManager = projectManager,
+                    onBack = {
+                        page = AppPage.Explorer(
+                            current.project
+                        )
+                    },
+                    onOpenAI = {
+                        page = AppPage.AIEditor(
+                            current.project,
+                            current.filePath
+                        )
+                    }
+                )
+            }
         }
 
         is AppPage.AIEditor -> {
@@ -296,7 +288,7 @@ private fun CodeForgeApp(
                 projectManager = projectManager,
                 apiKeyManager = apiKeyManager,
                 onBack = {
-                    page = AppPage.Editor(
+                    returnToEditor(
                         current.project,
                         current.filePath
                     )
@@ -322,5 +314,469 @@ private fun CodeForgeApp(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun CodeForgeChatScreen(
+    apiKeyManager: ApiKeyManager,
+    historyManager: ChatHistoryManager,
+    messages: androidx.compose.runtime.snapshots.SnapshotStateList<ChatMessage>,
+    nextId: () -> Long,
+    chatId: String?,
+    onChatIdChange: (String?) -> Unit,
+    selectedModel: AIModel,
+    onModelChange: (AIModel) -> Unit,
+    input: String,
+    onInputChange: (String) -> Unit,
+    busy: Boolean,
+    onBusyChange: (Boolean) -> Unit,
+    onNewChat: () -> Unit,
+    onHistory: () -> Unit,
+    onProjects: () -> Unit,
+    onSettings: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val api = remember { OpenRouterApi() }
+
+    var menuExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    fun sendMessage() {
+        val text = input.trim()
+
+        if (text.isBlank() || busy) return
+
+        if (text.length > 100_000) {
+            onError("Mensagem muito grande.")
+            return
+        }
+
+        val apiKey = apiKeyManager.getApiKey()
+
+        if (apiKey.isNullOrBlank()) {
+            onError(
+                "Configure sua chave OpenRouter nas configurações."
+            )
+            return
+        }
+
+        val activeChatId = try {
+            if (chatId != null) {
+                historyManager.addMessage(
+                    chatId,
+                    "user",
+                    text
+                )
+                chatId
+            } else {
+                val newChat = historyManager.createChat(
+                    modelId = selectedModel.id
+                )
+
+                historyManager.addMessage(
+                    newChat.id,
+                    "user",
+                    text
+                )
+
+                onChatIdChange(newChat.id)
+                newChat.id
+            }
+        } catch (e: Exception) {
+            onError(
+                e.message ?: "Erro ao salvar conversa."
+            )
+            return
+        }
+
+        messages.add(
+            ChatMessage(
+                id = nextId(),
+                text = text,
+                isUser = true
+            )
+        )
+
+        onInputChange("")
+        onBusyChange(true)
+
+        val requestMessages = buildList {
+            add(
+                ApiMessage(
+                    role = "system",
+                    content = AIModels.systemPrompt
+                )
+            )
+
+            messages.forEach { message ->
+                add(
+                    ApiMessage(
+                        role = if (message.isUser) {
+                            "user"
+                        } else {
+                            "assistant"
+                        },
+                        content = message.text
+                    )
+                )
+            }
+        }
+
+        val requestModelId = selectedModel.id
+
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    api.sendMessage(
+                        apiKey = apiKey,
+                        model = requestModelId,
+                        messages = requestMessages
+                    )
+                }
+
+                result.fold(
+                    onSuccess = { response ->
+                        messages.add(
+                            ChatMessage(
+                                id = nextId(),
+                                text = response,
+                                isUser = false
+                            )
+                        )
+
+                        try {
+                            historyManager.addMessage(
+                                activeChatId,
+                                "assistant",
+                                response
+                            )
+                        } catch (e: Exception) {
+                            onError(
+                                e.message
+                                    ?: "Erro ao salvar resposta."
+                            )
+                        }
+                    },
+                    onFailure = { error ->
+                        onError(
+                            error.message
+                                ?: "Erro ao consultar IA."
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                onError(
+                    e.message ?: "Erro ao enviar mensagem."
+                )
+            } finally {
+                onBusyChange(false)
+            }
+        }
+    }
+
+    LaunchedEffect(messages.size, busy) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(
+                messages.lastIndex
+            )
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text("CodeForge AI")
+                },
+                actions = {
+                    IconButton(
+                        onClick = onNewChat,
+                        enabled = !busy
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Nova conversa"
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onHistory,
+                        enabled = !busy
+                    ) {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = "Histórico"
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onProjects
+                    ) {
+                        Icon(
+                            Icons.Default.Folder,
+                            contentDescription = "Projetos"
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onSettings
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Configurações"
+                        )
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            Surface(
+                tonalElevation = 3.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .imePadding()
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = onInputChange,
+                        modifier = Modifier.weight(1f),
+                        placeholder = {
+                            Text("Peça ajuda com seu código...")
+                        },
+                        maxLines = 5
+                    )
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    IconButton(
+                        onClick = { sendMessage() },
+                        enabled = input.isNotBlank() && !busy
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Enviar",
+                            tint = AppAccent
+                        )
+                    }
+                }
+            }
+        }
+    ) { padding ->
+        
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            ) {
+                OutlinedCard(
+                    onClick = {
+                        if (!busy) {
+                            menuExpanded = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Modelo de IA",
+                                style = MaterialTheme
+                                    .typography.labelMedium
+                            )
+
+                            Text(
+                                selectedModel.name,
+                                style = MaterialTheme
+                                    .typography.bodyLarge
+                            )
+                        }
+
+                        Text("▼")
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = {
+                        menuExpanded = false
+                    }
+                ) {
+                    AIModels.defaultModels.forEach { model ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(model.name)
+                                    Text(
+                                        model.provider,
+                                        style = MaterialTheme
+                                            .typography.bodySmall
+                                    )
+                                }
+                            },
+                            onClick = {
+                                try {
+                                    if (chatId != null) {
+                                        historyManager.changeModel(
+                                            chatId,
+                                            model.id
+                                        )
+                                    }
+
+                                    onModelChange(model)
+                                    menuExpanded = false
+                                } catch (e: Exception) {
+                                    onError(
+                                        e.message
+                                            ?: "Erro ao alterar modelo."
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (messages.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment =
+                            Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Text(
+                            "CodeForge AI",
+                            style = MaterialTheme
+                                .typography.headlineMedium
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(12.dp)
+                        )
+
+                        Text(
+                            "Seu assistente de programação com IA.",
+                            style = MaterialTheme
+                                .typography.bodyMedium
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(12.dp)
+                ) {
+                    items(
+                        items = messages,
+                        key = { it.id }
+                    ) { message ->
+                        ChatMessageBubble(message)
+                    }
+
+                    if (busy) {
+                        item {
+                            Row(
+                                verticalAlignment =
+                                    Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.width(12.dp)
+                                )
+
+                                Text("A IA está respondendo...")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageBubble(
+    message: ChatMessage
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (message.isUser) {
+            Arrangement.End
+        } else {
+            Arrangement.Start
+        }
+    ) {
+        Surface(
+            color = if (message.isUser) {
+                AppAccent.copy(alpha = 0.18f)
+            } else {
+                AppSurface
+            },
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth(0.9f)
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp)
+            ) {
+                Text(
+                    text = if (message.isUser) {
+                        "Você"
+                    } else {
+                        "IA"
+                    },
+                    color = AppAccent,
+                    style = MaterialTheme
+                        .typography.labelMedium
+                )
+
+                Spacer(
+                    modifier = Modifier.height(6.dp)
+                )
+
+                Text(
+                    text = message.text,
+                    style = MaterialTheme
+                        .typography.bodyMedium
+                )
+            }
+        }
     }
 }
